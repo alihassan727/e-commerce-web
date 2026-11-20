@@ -1,0 +1,118 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Design system: warm off-white canvas, ink text, single clay accent.
+   Sharp radii, no shadows, no gradients, no hover animations. */
+
+:root {
+  color-scheme: light;
+}
+
+html,
+body {
+  background-color: #f6f2ec; /* canvas */
+  color: #1b1a18; /* ink */
+}
+
+body {
+  font-family: var(--font-ibm-plex), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Respect the "no hover animation" constraint: disable transitions globally. */
+*,
+*::before,
+*::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* Form controls inherit the theme; borders only, no shadows. */
+input,
+select,
+textarea,
+button {
+  font: inherit;
+  color: inherit;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: 2px solid #a8472d; /* clay */
+  outline-offset: 0;
+}
+
+/* Plain fieldset style used across forms. */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.field label {
+  font-size: 0.8125rem;
+  color: #6b6660; /* muted */
+}
+
+.input {
+  width: 100%;
+  border: 1px solid #d9d2c7; /* line */
+  background-color: #fffdf9;
+  padding: 0.5rem 0.625rem;
+  border-radius: 2px;
+}
+
+.input::placeholder {
+  color: #9a938a;
+}
+
+/* Buttons: solid clay primary, outline secondary. Static states only. */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 2px;
+  padding: 0.55rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: 1px solid transparent;
+  cursor: pointer;
+}
+
+.btn-primary {
+  background-color: #a8472d; /* clay */
+  color: #fffdf9;
+  border-color: #a8472d;
+}
+
+.btn-primary:disabled {
+  background-color: #c9a99a;
+  border-color: #c9a99a;
+  cursor: not-allowed;
+}
+
+.btn-outline {
+  background-color: transparent;
+  color: #1b1a18;
+  border-color: #1b1a18;
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: #1b1a18;
+  border-color: #d9d2c7;
+}
+
+/* Layout helpers */
+.container-page {
+  max-width: 72rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+.divider {
+  border-top: 1px solid #d9d2c7;
+}

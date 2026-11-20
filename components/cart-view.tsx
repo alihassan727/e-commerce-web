@@ -42,30 +42,33 @@ export default function CartView({ currency }: { currency: string }) {
                 {formatPrice(item.price, currency)} each
               </p>
               <div className="flex items-center gap-3 mt-3">
-                <div className="flex items-center border border-line">
-                  <button
-                    type="button"
-                    className="px-3 py-1"
-                    onClick={() =>
-                      setQty(item.product_id, item.variant_id, item.quantity - 1)
-                    }
-                    aria-label="Decrease quantity"
-                  >
-                    minus
-                  </button>
-                  <span className="px-3 py-1 text-sm w-10 text-center">
-                    {item.quantity}
-                  </span>
-                  <button
-                    type="button"
-                    className="px-3 py-1"
-                    onClick={() =>
-                      setQty(item.product_id, item.variant_id, item.quantity + 1)
-                    }
-                    aria-label="Increase quantity"
-                  >
-                    plus
-                  </button>
+                <div>
+                  <p className="text-xs text-muted mb-1">Quantity</p>
+                  <div className="flex items-center border border-line">
+                    <button
+                      type="button"
+                      className="px-3 py-1 text-base leading-none"
+                      onClick={() =>
+                        setQty(item.product_id, item.variant_id, item.quantity - 1)
+                      }
+                      aria-label="Decrease quantity"
+                    >
+                      &minus;
+                    </button>
+                    <span className="px-3 py-1 text-sm w-10 text-center">
+                      {item.quantity}
+                    </span>
+                    <button
+                      type="button"
+                      className="px-3 py-1 text-base leading-none"
+                      onClick={() =>
+                        setQty(item.product_id, item.variant_id, item.quantity + 1)
+                      }
+                      aria-label="Increase quantity"
+                    >
+                      +
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="button"

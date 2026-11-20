@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { useCart } from '@/lib/cart-context';
 import { formatPrice } from '@/lib/format';
 import type { ProductDetail } from '@/lib/types';
@@ -13,6 +14,7 @@ export default function ProductPurchase({
   currency: string;
 }) {
   const { add } = useCart();
+  const router = useRouter();
   const variants = product.variants ?? [];
   const hasVariants = product.has_variants && variants.length > 0;
 
@@ -26,9 +28,8 @@ export default function ProductPurchase({
   const stock = hasVariants ? selected?.stock ?? 0 : product.stock ?? 0;
   const outOfStock = stock <= 0;
 
-  function addToCart() {
-    if (outOfStock || (hasVariants && !selected)) return;
-    add({
+  function buildCartItem() {
+    return {
       product_id: product.id,
       variant_id: selected ? selected.id : null,
       title: product.title,
@@ -38,8 +39,19 @@ export default function ProductPurchase({
         : null,
       price: product.price,
       quantity: qty,
-    });
+    };
+  }
+
+  function addToCart() {
+    if (outOfStock || (hasVariants && !selected)) return;
+    add(buildCartItem());
     setAdded(true);
+  }
+
+  function buyNow() {
+    if (outOfStock || (hasVariants && !selected)) return;
+    add(buildCartItem());
+    router.push('/checkout');
   }
 
   return (
@@ -101,14 +113,22 @@ export default function ProductPurchase({
             : `${stock} in stock`}
       </p>
 
-      <div className="flex items-center gap-4">
+      <div className="flex items-center gap-3 flex-wrap">
         <button
           type="button"
-          className="btn btn-primary"
+          className="btn btn-outline"
           onClick={addToCart}
           disabled={outOfStock}
         >
           Add to cart
+        </button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onClick={buyNow}
+          disabled={outOfStock}
+        >
+          Buy now
         </button>
         {added && (
           <span className="text-sm text-muted">Added to your cart.</span>

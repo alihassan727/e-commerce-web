@@ -20,7 +20,7 @@ export default async function Navbar() {
           Atlas Clothier
         </Link>
         <nav className="flex items-center gap-6 text-sm">
-          <Link href="/" className="text-ink">
+          <Link href="/shop" className="text-ink">
             Shop
           </Link>
           <Link href="/cart" className="text-ink">

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import SignOutButton from '@/components/sign-out-button';
+import DeleteAccountButton from '@/components/delete-account-button';
 import OrderStatusBadge from '@/components/order-status-badge';
 import { getCurrentUser } from '@/lib/admin';
 import { getOrdersForCurrentUser } from '@/lib/queries/orders';
@@ -18,7 +19,9 @@ export default async function AccountOrdersPage() {
     <section className="container-page py-12">
       <div className="flex items-center justify-between mb-2">
         <h1 className="font-serif text-3xl">Your orders</h1>
-        <SignOutButton />
+        <div className="flex items-center gap-3">
+          <SignOutButton />
+        </div>
       </div>
       <p className="text-sm text-muted mb-8">Signed in as {user?.email}</p>
 
@@ -55,6 +58,11 @@ export default async function AccountOrdersPage() {
           ))}
         </div>
       )}
+
+      <div className="mt-16 pt-6 border-t border-line">
+        <h2 className="font-medium text-sm mb-4">Account</h2>
+        <DeleteAccountButton />
+      </div>
     </section>
   );
 }

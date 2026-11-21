@@ -6,20 +6,21 @@ import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
 
 // ---------------------------------------------------------------------------
-// Signup flow (OTP-based)
+// Signup flow — two-step OTP verification
 // ---------------------------------------------------------------------------
-// Step 1: user enters name + email + password → signUp() fires, Supabase
-//         sends a 6-digit OTP to the email address.
-// Step 2: OTP input appears. User types the code → verifyOtp() confirms the
-//         account, creates a session, and redirects to `next`.
+// Step 1: user enters name + email + password.
+//   - signUp() creates the unconfirmed account.
+//   - signInWithOtp() immediately sends a 6-digit code to the email.
+//     (shouldCreateUser: false because signUp already created the user)
+//   This works with all Supabase email template configurations because
+//   signInWithOtp always sends a 6-digit code, regardless of whether the
+//   "Confirm signup" template is set to link or OTP.
 //
-// This requires "Email OTP" to be enabled in your Supabase project:
-//   Auth → Email Templates → Confirm signup → set type to OTP (not magic link)
-//   OR: Auth → Providers → Email → "Confirm email" ON + "Secure email change"
-//   The key is that signUp() without an emailRedirectTo causes Supabase to
-//   send a 6-digit code instead of a link.
+// Step 2: OTP input.
+//   - verifyOtp({ type: 'email' }) confirms the account and creates a session.
+//   - Redirect to `next` (the page the user came from).
 //
-// Login flow is unchanged: email + password → signInWithPassword → redirect.
+// Login flow: unchanged — email + password → signInWithPassword → redirect.
 // ---------------------------------------------------------------------------
 
 type SignupStep = 'credentials' | 'otp';
@@ -34,19 +35,20 @@ export default function AuthForm({
   const supabase = createClient();
   const router = useRouter();
 
-  // Shared fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Signup-only: which step we are on
+  // Signup-only state
   const [step, setStep] = useState<SignupStep>('credentials');
   const [otp, setOtp] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
-  // ---- Step 1: submit credentials, receive OTP in email ------------------
+  // -------------------------------------------------------------------------
+  // Signup Step 1: create account + send OTP
+  // -------------------------------------------------------------------------
   async function onSignupSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
@@ -61,72 +63,87 @@ export default function AuthForm({
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.signUp({
+
+    // 1a. Create the user (may already exist if they tried before).
+    const { error: signUpError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
-      options: {
-        data: { full_name: name.trim() },
-        // No emailRedirectTo → Supabase sends a 6-digit OTP code, not a link.
-      },
+      options: { data: { full_name: name.trim() } },
     });
-    setLoading(false);
 
-    if (error) {
-      // "User already registered" means they have an account; direct to login.
-      if (error.message.toLowerCase().includes('already registered')) {
+    if (signUpError) {
+      setLoading(false);
+      if (signUpError.message.toLowerCase().includes('already registered')) {
         setError('An account with this email already exists. Sign in instead.');
       } else {
-        setError(error.message);
+        setError(signUpError.message);
       }
       return;
     }
 
-    // OTP sent — show the verification step.
+    // 1b. Send a 6-digit OTP code to the email.
+    // signInWithOtp always delivers a numeric code regardless of the
+    // "Confirm signup" template configuration in the Supabase dashboard.
+    const { error: otpError } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false },
+    });
+
+    setLoading(false);
+
+    if (otpError) {
+      setError(otpError.message);
+      return;
+    }
+
     setStep('otp');
     startCooldown();
   }
 
-  // ---- Step 2: verify the OTP code ---------------------------------------
+  // -------------------------------------------------------------------------
+  // Signup Step 2: verify the 6-digit OTP
+  // -------------------------------------------------------------------------
   async function onOtpSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
 
     const code = otp.trim();
-    if (code.length !== 6 || !/^\d{6}$/.test(code)) {
+    if (!/^\d{6}$/.test(code)) {
       setError('Enter the 6-digit code from your email.');
       return;
     }
 
     setLoading(true);
-    const { error } = await supabase.auth.verifyOtp({
+    const { error: verifyError } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(),
       token: code,
-      type: 'signup',
+      type: 'email',
     });
     setLoading(false);
 
-    if (error) {
-      setError(error.message);
+    if (verifyError) {
+      setError(verifyError.message);
       return;
     }
 
-    // Verified — session is active. Go to the destination page.
     router.push(next);
     router.refresh();
   }
 
-  // ---- Resend OTP --------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Resend OTP (re-calls signInWithOtp)
+  // -------------------------------------------------------------------------
   async function resend() {
-    if (resendCooldown > 0) return;
+    if (resendCooldown > 0 || loading) return;
     setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.resend({
-      type: 'signup',
+    const { error: resendError } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
+      options: { shouldCreateUser: false },
     });
     setLoading(false);
-    if (error) {
-      setError(error.message);
+    if (resendError) {
+      setError(resendError.message);
     } else {
       startCooldown();
     }
@@ -136,42 +153,49 @@ export default function AuthForm({
     setResendCooldown(60);
     const id = setInterval(() => {
       setResendCooldown((prev) => {
-        if (prev <= 1) { clearInterval(id); return 0; }
+        if (prev <= 1) {
+          clearInterval(id);
+          return 0;
+        }
         return prev - 1;
       });
     }, 1000);
   }
 
-  // ---- Login form --------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // Login
+  // -------------------------------------------------------------------------
   async function onLoginSubmit(e: FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
+    const { error: loginError } = await supabase.auth.signInWithPassword({
       email: email.trim().toLowerCase(),
       password,
     });
     setLoading(false);
-    if (error) {
-      setError(error.message);
+    if (loginError) {
+      setError(loginError.message);
       return;
     }
     router.push(next);
     router.refresh();
   }
 
-  // ========================================================================
+  // =========================================================================
   // Render
-  // ========================================================================
+  // =========================================================================
 
+  // ---- OTP verification step ----------------------------------------------
   if (mode === 'signup' && step === 'otp') {
     return (
       <form onSubmit={onOtpSubmit} className="flex flex-col gap-4">
         <div className="border border-line p-4">
           <p className="font-medium text-sm">Check your email</p>
           <p className="text-sm text-muted mt-1">
-            We sent a 6-digit code to <span className="text-ink">{email}</span>.
-            Enter it below to confirm your account.
+            We sent a 6-digit code to{' '}
+            <span className="text-ink">{email}</span>. Enter it below to
+            confirm your account.
           </p>
         </div>
 
@@ -213,7 +237,11 @@ export default function AuthForm({
         <button
           type="button"
           className="text-sm text-muted text-left"
-          onClick={() => { setStep('credentials'); setOtp(''); setError(null); }}
+          onClick={() => {
+            setStep('credentials');
+            setOtp('');
+            setError(null);
+          }}
         >
           Back to sign up
         </button>
@@ -221,6 +249,7 @@ export default function AuthForm({
     );
   }
 
+  // ---- Signup credentials step --------------------------------------------
   if (mode === 'signup') {
     return (
       <form onSubmit={onSignupSubmit} className="flex flex-col gap-4">
@@ -271,7 +300,10 @@ export default function AuthForm({
 
         <p className="text-sm text-muted">
           Already have an account?{' '}
-          <Link href={`/login?next=${encodeURIComponent(next)}`} className="text-clay">
+          <Link
+            href={`/login?next=${encodeURIComponent(next)}`}
+            className="text-clay"
+          >
             Sign in
           </Link>
         </p>
@@ -279,7 +311,7 @@ export default function AuthForm({
     );
   }
 
-  // Login
+  // ---- Login form ---------------------------------------------------------
   return (
     <form onSubmit={onLoginSubmit} className="flex flex-col gap-4">
       <div className="field">
@@ -316,7 +348,10 @@ export default function AuthForm({
 
       <p className="text-sm text-muted">
         New here?{' '}
-        <Link href={`/signup?next=${encodeURIComponent(next)}`} className="text-clay">
+        <Link
+          href={`/signup?next=${encodeURIComponent(next)}`}
+          className="text-clay"
+        >
           Create an account
         </Link>
       </p>

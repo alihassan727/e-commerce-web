@@ -9,16 +9,32 @@ import { createClient } from '@/lib/supabase/client';
 // Signup flow — two-step OTP verification
 // ---------------------------------------------------------------------------
 // Step 1: user enters name + email + password.
-//   - signUp() creates the unconfirmed account.
-//   - signInWithOtp() immediately sends a 6-digit code to the email.
-//     (shouldCreateUser: false because signUp already created the user)
-//   This works with all Supabase email template configurations because
-//   signInWithOtp always sends a 6-digit code, regardless of whether the
-//   "Confirm signup" template is set to link or OTP.
+//   - signUp() creates the unconfirmed account AND triggers the
+//     "Confirm signup" email template.
+//   - No second API call is made. signUp() alone is responsible for sending
+//     the verification email.
 //
 // Step 2: OTP input.
-//   - verifyOtp({ type: 'email' }) confirms the account and creates a session.
+//   - verifyOtp({ type: 'signup' }) confirms the account and creates a
+//     session. The type MUST be 'signup' because the token was issued by
+//     signUp(), which uses the Confirm signup template — not the Magic Link
+//     template. Using type: 'email' here would look up the wrong token bucket
+//     and always fail.
 //   - Redirect to `next` (the page the user came from).
+//
+// Resend:
+//   - auth.resend({ type: 'signup', email }) re-sends via the same
+//     Confirm signup template. Using signInWithOtp() for resend would use the
+//     Magic Link template instead, issuing a different token that cannot be
+//     verified with type: 'signup'.
+//
+// REQUIRED Supabase dashboard change (without this, a link is sent, not a
+// code — the OTP input will never match anything):
+//   Authentication → Email Templates → Confirm signup
+//   Change the email body so it contains {{ .Token }} (the 6-digit code)
+//   instead of, or in addition to, {{ .ConfirmationURL }} (the magic link).
+//   The Token variable is only populated when the template does NOT include
+//   ConfirmationURL. Use Token alone for a pure OTP flow.
 //
 // Login flow: unchanged — email + password → signInWithPassword → redirect.
 // ---------------------------------------------------------------------------
@@ -64,7 +80,9 @@ export default function AuthForm({
 
     setLoading(true);
 
-    // 1a. Create the user (may already exist if they tried before).
+    // signUp() creates the account AND sends the Confirm signup email.
+    // No second API call needed. The email template must contain {{ .Token }}
+    // (not {{ .ConfirmationURL }}) to deliver a 6-digit code.
     const { error: signUpError } = await supabase.auth.signUp({
       email: email.trim().toLowerCase(),
       password,
@@ -81,21 +99,10 @@ export default function AuthForm({
       return;
     }
 
-    // 1b. Send a 6-digit OTP code to the email.
-    // signInWithOtp always delivers a numeric code regardless of the
-    // "Confirm signup" template configuration in the Supabase dashboard.
-    const { error: otpError } = await supabase.auth.signInWithOtp({
-      email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false },
-    });
-
+    // Account created; the Confirm signup email is on its way.
+    // Do NOT call signInWithOtp() here — that uses the Magic Link template
+    // and issues a different token that cannot be verified with type: 'signup'.
     setLoading(false);
-
-    if (otpError) {
-      setError(otpError.message);
-      return;
-    }
-
     setStep('otp');
     startCooldown();
   }
@@ -117,7 +124,9 @@ export default function AuthForm({
     const { error: verifyError } = await supabase.auth.verifyOtp({
       email: email.trim().toLowerCase(),
       token: code,
-      type: 'email',
+      // 'signup' is the correct type for tokens issued by signUp().
+      // Using 'email' here would look up the Magic Link token bucket and fail.
+      type: 'signup',
     });
     setLoading(false);
 
@@ -131,15 +140,19 @@ export default function AuthForm({
   }
 
   // -------------------------------------------------------------------------
-  // Resend OTP (re-calls signInWithOtp)
+  // Resend OTP — uses auth.resend() with type: 'signup' so Supabase
+  // re-sends via the Confirm signup template (same token bucket as the
+  // original signUp() call). Using signInWithOtp() here would send via
+  // the Magic Link template instead, issuing a token that cannot be
+  // verified with type: 'signup'.
   // -------------------------------------------------------------------------
   async function resend() {
     if (resendCooldown > 0 || loading) return;
     setError(null);
     setLoading(true);
-    const { error: resendError } = await supabase.auth.signInWithOtp({
+    const { error: resendError } = await supabase.auth.resend({
+      type: 'signup',
       email: email.trim().toLowerCase(),
-      options: { shouldCreateUser: false },
     });
     setLoading(false);
     if (resendError) {

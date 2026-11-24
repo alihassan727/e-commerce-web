@@ -58,7 +58,7 @@ export default function DeleteAccountButton() {
         Supabase. Your order history will be kept but unlinked from any
         account.
       </p>
-      {error && <p className="text-sm text-clay mt-2">{error}</p>}
+      {error && <p className="text-sm theme-text mt-2">{error}</p>}
       <div className="flex items-center gap-3 mt-4">
         <button
           type="button"

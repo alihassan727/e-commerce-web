@@ -31,13 +31,13 @@ export default function HomepageSectionActions({
 
   return (
     <div className="flex flex-wrap items-center gap-3 text-sm">
-      <button type="button" disabled={busy} className="text-clay" onClick={() => run(() => moveHomepageSection(id, 'up'))}>
+      <button type="button" disabled={busy} className="theme-text" onClick={() => run(() => moveHomepageSection(id, 'up'))}>
         Up
       </button>
-      <button type="button" disabled={busy} className="text-clay" onClick={() => run(() => moveHomepageSection(id, 'down'))}>
+      <button type="button" disabled={busy} className="theme-text" onClick={() => run(() => moveHomepageSection(id, 'down'))}>
         Down
       </button>
-      <Link href={`/admin/homepage/${id}`} className="text-clay">
+      <Link href={`/admin/homepage/${id}`} className="theme-text">
         Edit
       </Link>
       <button
@@ -59,7 +59,7 @@ export default function HomepageSectionActions({
       >
         Delete
       </button>
-      {err && <span className="text-clay">{err}</span>}
+      {err && <span className="theme-text">{err}</span>}
     </div>
   );
 }

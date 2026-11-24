@@ -16,7 +16,7 @@ export default function ProductGallery({
 
   if (sorted.length === 0) {
     return (
-      <div className="aspect-[4/5] w-full border border-line bg-clay-tint flex items-center justify-center text-muted">
+      <div className="aspect-[4/5] w-full border border-line theme-tint flex items-center justify-center text-muted">
         {alt}
       </div>
     );
@@ -42,7 +42,7 @@ export default function ProductGallery({
               onClick={() => setActive(i)}
               aria-label={`View image ${i + 1}`}
               className={`w-16 h-20 overflow-hidden border ${
-                i === active ? 'border-clay' : 'border-line'
+                i === active ? 'theme-border' : 'border-line'
               } bg-canvas`}
             >
               <ProductImage

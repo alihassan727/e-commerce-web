@@ -6,7 +6,7 @@ export default function OrderStatusBadge({ status }: { status: OrderStatus }) {
     status === 'confirmed' ||
     status === 'shipped' ||
     status === 'delivered'
-      ? 'text-clay'
+      ? 'theme-text'
       : status === 'out_of_stock' || status === 'cancelled'
         ? 'text-muted'
         : 'text-ink';

@@ -1,68 +1,54 @@
 import Link from 'next/link';
-import SignOutButton from '@/components/sign-out-button';
-import DeleteAccountButton from '@/components/delete-account-button';
 import OrderStatusBadge from '@/components/order-status-badge';
-import { getCurrentUser } from '@/lib/admin';
-import { getOrdersForCurrentUser } from '@/lib/queries/orders';
+import { getMyCustomer, getMyOrders } from '@/lib/queries/account';
 import { getSiteSettings } from '@/lib/queries/catalog';
 import { formatPrice } from '@/lib/format';
+import DeleteAccountButton from '@/components/delete-account-button';
 
 export default async function AccountOrdersPage() {
-  const [settings, user] = await Promise.all([
-    getSiteSettings(),
-    getCurrentUser(),
-  ]);
+  const [customer, settings] = await Promise.all([getMyCustomer(), getSiteSettings()]);
+  if (!customer) return null;
   const currency = settings?.currency ?? 'PKR';
-  const orders = await getOrdersForCurrentUser();
+  const orders = await getMyOrders(customer.id);
 
   return (
-    <section className="container-page py-12">
-      <div className="flex items-center justify-between mb-2">
-        <h1 className="font-serif text-3xl">Your orders</h1>
-        <div className="flex items-center gap-3">
-          <SignOutButton />
-        </div>
-      </div>
-      <p className="text-sm text-muted mb-8">Signed in as {user?.email}</p>
+    <div>
+      <h1 className="font-serif text-3xl mb-6 text-ink dark:text-dark-ink">Your orders</h1>
 
       {orders.length === 0 ? (
-        <p className="text-muted">No orders yet.</p>
+        <div className="border border-line dark:border-dark-line p-8 text-center">
+          <p className="text-muted dark:text-dark-muted">No orders yet.</p>
+          <Link href="/shop" className="btn btn-primary mt-4">Shop now</Link>
+        </div>
       ) : (
-        <div className="flex flex-col gap-4">
-          {orders.map((order) => (
+        <div className="flex flex-col gap-3">
+          {orders.map((o) => (
             <Link
-              key={order.id}
-              href={`/order/${order.id}?email=${encodeURIComponent(order.email)}`}
-              className="block border border-line p-4"
+              key={o.id}
+              href={`/account/orders/${o.id}`}
+              className="block border border-line dark:border-dark-line p-4"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between flex-wrap gap-2">
                 <div>
-                  <p className="text-sm text-muted">
-                    {new Date(order.created_at).toLocaleDateString(undefined, {
-                      year: 'numeric',
-                      month: 'short',
-                      day: 'numeric',
-                    })}
+                  <p className="text-xs text-muted dark:text-dark-muted">
+                    {new Date(o.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
                   </p>
-                  <p className="font-medium mt-1">
-                    {formatPrice(order.total, currency)}
-                  </p>
-                  <p className="text-sm text-muted mt-1">
-                    {order.items.length}{' '}
-                    {order.items.length === 1 ? 'item' : 'items'}
+                  <p className="font-medium mt-1 text-ink dark:text-dark-ink">{formatPrice(o.total, currency)}</p>
+                  <p className="text-sm text-muted dark:text-dark-muted mt-1">
+                    {o.items.length} {o.items.length === 1 ? 'item' : 'items'}
                   </p>
                 </div>
-                <OrderStatusBadge status={order.status} />
+                <OrderStatusBadge status={o.status} />
               </div>
             </Link>
           ))}
         </div>
       )}
 
-      <div className="mt-16 pt-6 border-t border-line">
-        <h2 className="font-medium text-sm mb-4">Account</h2>
+      <div className="mt-16 pt-6 border-t border-line dark:border-dark-line">
+        <h2 className="font-medium text-sm mb-4 text-ink dark:text-dark-ink">Account</h2>
         <DeleteAccountButton />
       </div>
-    </section>
+    </div>
   );
 }

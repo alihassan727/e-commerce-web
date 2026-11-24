@@ -229,7 +229,7 @@ export default function AuthForm({
           />
         </div>
 
-        {error && <p className="text-sm text-clay">{error}</p>}
+        {error && <p className="text-sm theme-text">{error}</p>}
 
         <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Verifying' : 'Confirm account'}
@@ -241,7 +241,7 @@ export default function AuthForm({
             type="button"
             onClick={resend}
             disabled={resendCooldown > 0 || loading}
-            className="text-clay disabled:text-muted"
+            className="theme-text disabled:text-muted"
           >
             {resendCooldown > 0 ? `Resend in ${resendCooldown}s` : 'Resend code'}
           </button>
@@ -305,7 +305,7 @@ export default function AuthForm({
           <p className="text-xs text-muted mt-1">At least 6 characters.</p>
         </div>
 
-        {error && <p className="text-sm text-clay">{error}</p>}
+        {error && <p className="text-sm theme-text">{error}</p>}
 
         <button type="submit" className="btn btn-primary" disabled={loading}>
           {loading ? 'Please wait' : 'Continue'}
@@ -315,7 +315,7 @@ export default function AuthForm({
           Already have an account?{' '}
           <Link
             href={`/login?next=${encodeURIComponent(next)}`}
-            className="text-clay"
+            className="theme-text"
           >
             Sign in
           </Link>
@@ -353,7 +353,7 @@ export default function AuthForm({
         />
       </div>
 
-      {error && <p className="text-sm text-clay">{error}</p>}
+      {error && <p className="text-sm theme-text">{error}</p>}
 
       <button type="submit" className="btn btn-primary" disabled={loading}>
         {loading ? 'Please wait' : 'Sign in'}
@@ -363,7 +363,7 @@ export default function AuthForm({
         New here?{' '}
         <Link
           href={`/signup?next=${encodeURIComponent(next)}`}
-          className="text-clay"
+          className="theme-text"
         >
           Create an account
         </Link>

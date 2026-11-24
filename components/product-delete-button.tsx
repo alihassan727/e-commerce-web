@@ -28,7 +28,7 @@ export default function ProductDeleteButton({ id }: { id: string }) {
       <button type="button" className="btn btn-outline" onClick={onDelete} disabled={busy}>
         {busy ? 'Deleting' : 'Delete product'}
       </button>
-      {err && <span className="text-sm text-clay">{err}</span>}
+      {err && <span className="text-sm theme-text">{err}</span>}
     </div>
   );
 }

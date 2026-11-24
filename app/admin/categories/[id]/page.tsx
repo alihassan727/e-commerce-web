@@ -16,7 +16,7 @@ export default async function EditCategoryPage({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-serif text-3xl">Edit category</h1>
-        <Link href="/admin/categories" className="text-sm text-clay">
+        <Link href="/admin/categories" className="text-sm theme-text">
           Back to categories
         </Link>
       </div>

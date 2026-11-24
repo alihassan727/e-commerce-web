@@ -23,7 +23,7 @@ export default function ProductImage({
   if (!url || failed) {
     return (
       <div
-        className={`flex items-center justify-center bg-clay-tint text-muted text-sm px-4 text-center ${className ?? ''}`}
+        className={`flex items-center justify-center theme-tint text-muted text-sm px-4 text-center ${className ?? ''}`}
         aria-label={alt}
       >
         <span>{alt}</span>

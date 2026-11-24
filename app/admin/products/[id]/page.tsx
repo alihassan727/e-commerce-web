@@ -20,7 +20,7 @@ export default async function EditProductPage({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-serif text-3xl">{product.title}</h1>
-        <Link href="/admin/products" className="text-sm text-clay">
+        <Link href="/admin/products" className="text-sm theme-text">
           Back to products
         </Link>
       </div>

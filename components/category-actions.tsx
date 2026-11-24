@@ -21,13 +21,13 @@ export default function CategoryActions({ id }: { id: string }) {
 
   return (
     <div className="flex items-center gap-3 text-sm">
-      <button type="button" disabled={busy} className="text-clay" onClick={() => run(() => moveCategory(id, 'up'))}>
+      <button type="button" disabled={busy} className="theme-text" onClick={() => run(() => moveCategory(id, 'up'))}>
         Up
       </button>
-      <button type="button" disabled={busy} className="text-clay" onClick={() => run(() => moveCategory(id, 'down'))}>
+      <button type="button" disabled={busy} className="theme-text" onClick={() => run(() => moveCategory(id, 'down'))}>
         Down
       </button>
-      <Link href={`/admin/categories/${id}`} className="text-clay">
+      <Link href={`/admin/categories/${id}`} className="theme-text">
         Edit
       </Link>
       <button
@@ -41,7 +41,7 @@ export default function CategoryActions({ id }: { id: string }) {
       >
         Delete
       </button>
-      {err && <span className="text-clay">{err}</span>}
+      {err && <span className="theme-text">{err}</span>}
     </div>
   );
 }

@@ -186,15 +186,24 @@ export async function adminListCustomers(): Promise<AdminCustomerRow[]> {
     .from('customers')
     .select('*')
     .order('created_at', { ascending: false });
-  const result: AdminCustomerRow[] = [];
-  for (const c of (customers ?? []) as Customer[]) {
-    const { count } = await admin
-      .from('orders')
-      .select('id', { count: 'exact', head: true })
-      .eq('customer_id', c.id);
-    result.push({ ...c, order_count: count ?? 0 });
+  if (!customers || customers.length === 0) return [];
+
+  // Fetch order counts for all customers in a single query instead of N+1.
+  const customerIds = (customers as Customer[]).map((c) => c.id);
+  const { data: countRows } = await admin
+    .from('orders')
+    .select('customer_id')
+    .in('customer_id', customerIds);
+
+  const countMap = new Map<string, number>();
+  for (const row of (countRows ?? []) as { customer_id: string }[]) {
+    countMap.set(row.customer_id, (countMap.get(row.customer_id) ?? 0) + 1);
   }
-  return result;
+
+  return (customers as Customer[]).map((c) => ({
+    ...c,
+    order_count: countMap.get(c.id) ?? 0,
+  }));
 }
 
 export async function adminGetCustomer(
@@ -239,4 +248,34 @@ export async function adminGetSettings(): Promise<SiteSettings | null> {
   const admin = createAdminClient();
   const { data } = await admin.from('site_settings').select('*').eq('id', 1).maybeSingle();
   return data as SiteSettings | null;
+}
+
+// ----- Payment gateway config (server-side only, never exposed to browser) -
+export interface PaymentGatewayRow {
+  id: string;
+  gateway: 'safepay' | 'payfast';
+  is_active: boolean;
+  credentials: Record<string, string>;
+  updated_at: string;
+}
+
+export async function adminListPaymentGateways(): Promise<PaymentGatewayRow[]> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('payment_gateway_config')
+    .select('id,gateway,is_active,updated_at')   // credentials intentionally excluded
+    .order('gateway', { ascending: true });
+  return (data ?? []) as PaymentGatewayRow[];
+}
+
+export async function adminGetPaymentGateway(
+  gateway: string,
+): Promise<PaymentGatewayRow | null> {
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from('payment_gateway_config')
+    .select('id,gateway,is_active,credentials,updated_at')
+    .eq('gateway', gateway)
+    .maybeSingle();
+  return data as PaymentGatewayRow | null;
 }

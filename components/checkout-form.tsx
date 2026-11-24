@@ -75,7 +75,7 @@ export default function CheckoutForm({
           Cash on delivery. No payment needed now. We confirm stock and email you.
         </p>
 
-        {error && <p className="text-sm text-clay">{error}</p>}
+        {error && <p className="text-sm theme-text">{error}</p>}
 
         <div className="field">
           <label htmlFor="name">Full name</label>

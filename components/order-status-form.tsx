@@ -46,7 +46,7 @@ export default function OrderStatusForm({
       <button type="button" className="btn btn-primary" onClick={onSave} disabled={busy}>
         {busy ? 'Updating' : 'Update status'}
       </button>
-      {err && <span className="text-sm text-clay">{err}</span>}
+      {err && <span className="text-sm theme-text">{err}</span>}
     </div>
   );
 }

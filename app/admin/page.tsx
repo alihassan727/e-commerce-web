@@ -49,7 +49,7 @@ export default async function AdminDashboardPage() {
       <section className="mb-10">
         <div className="flex items-baseline justify-between mb-4">
           <h2 className="font-serif text-xl">Recent orders</h2>
-          <Link href="/admin/orders" className="text-sm text-clay">
+          <Link href="/admin/orders" className="text-sm theme-text">
             View all
           </Link>
         </div>

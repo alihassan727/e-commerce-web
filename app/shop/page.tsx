@@ -18,7 +18,7 @@ export default async function ShopPage() {
     <section className="container-page py-12">
       <h1 className="font-serif text-3xl md:text-4xl mb-2">All products</h1>
       <div className="flex flex-wrap gap-x-4 gap-y-1 mb-8 text-sm">
-        <Link href="/shop" className="text-clay">All</Link>
+        <Link href="/shop" className="theme-text">All</Link>
         {categories.map((c) => (
           <Link key={c.id} href={`/category/${c.slug}`} className="text-muted">
             {c.name}

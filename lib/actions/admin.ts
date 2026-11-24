@@ -487,8 +487,68 @@ export async function toggleHomepageSection(
 }
 
 // ---------------------------------------------------------------------------
-// Site settings
+// Site settings — button color
 // ---------------------------------------------------------------------------
+
+export async function saveButtonColor(color: string): Promise<DeleteResult> {
+  await requireAdmin();
+  // Validate it is a valid 3 or 6-digit hex color.
+  if (!/^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(color.trim())) {
+    return { ok: false, error: 'Invalid hex color. Use format #A8472D.' };
+  }
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('site_settings')
+    .update({ button_color: color.trim().toUpperCase() })
+    .eq('id', 1);
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/');
+  revalidatePath('/admin/settings');
+  revalidatePath('/admin/cms/site');
+  return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Payment gateway configuration (server-side only)
+// ---------------------------------------------------------------------------
+
+const GATEWAY_FIELD_ALLOWLISTS: Record<string, string[]> = {
+  safepay: ['environment', 'public_key', 'secret_key', 'webhook_secret'],
+  payfast: ['environment', 'merchant_id', 'secured_key'],
+};
+
+export async function savePaymentGateway(
+  gateway: string,
+  credentials: Record<string, string>,
+): Promise<DeleteResult> {
+  await requireAdmin();
+
+  const allowed = GATEWAY_FIELD_ALLOWLISTS[gateway];
+  if (!allowed) return { ok: false, error: 'Unknown gateway.' };
+
+  // Strip any fields not in the allowlist to prevent storing arbitrary data.
+  const sanitized: Record<string, string> = {};
+  for (const key of allowed) {
+    if (credentials[key] !== undefined) {
+      sanitized[key] = String(credentials[key]).trim();
+    }
+  }
+
+  // Validate environment field if present.
+  if (sanitized.environment && !['sandbox', 'live'].includes(sanitized.environment)) {
+    return { ok: false, error: 'Environment must be sandbox or live.' };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from('payment_gateway_config')
+    .update({ credentials: sanitized })
+    .eq('gateway', gateway);
+  if (error) return { ok: false, error: error.message };
+
+  revalidatePath('/admin/payments');
+  return { ok: true };
+}
 
 export interface SettingsInput {
   store_name: string;

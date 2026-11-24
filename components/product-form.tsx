@@ -412,7 +412,7 @@ export default function ProductForm({
           <div className="grid grid-cols-3 md:grid-cols-5 gap-3 mb-4">
             {pendingFiles.map((file, i) => (
               <div key={i} className="relative border border-line border-dashed">
-                <div className="aspect-square bg-clay-tint flex items-center justify-center overflow-hidden">
+                <div className="aspect-square theme-tint flex items-center justify-center overflow-hidden">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
                   <img
                     src={URL.createObjectURL(file)}
@@ -457,7 +457,7 @@ export default function ProductForm({
         )}
       </div>
 
-      {err && <p className="text-sm text-clay">{err}</p>}
+      {err && <p className="text-sm theme-text">{err}</p>}
       {msg && <p className="text-sm text-muted">{msg}</p>}
 
       <div className="flex items-center gap-4">

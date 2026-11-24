@@ -89,7 +89,7 @@ export default function CategoryForm({
         <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>
           {saving ? 'Saving' : editing ? 'Save changes' : 'Add category'}
         </button>
-        {err && <span className="text-sm text-clay">{err}</span>}
+        {err && <span className="text-sm theme-text">{err}</span>}
       </div>
     </div>
   );

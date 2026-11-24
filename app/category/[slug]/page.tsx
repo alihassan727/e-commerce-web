@@ -32,7 +32,7 @@ export default async function CategoryPage({
           <Link
             key={c.id}
             href={`/category/${c.slug}`}
-            className={c.slug === slug ? 'text-clay' : 'text-muted'}
+            className={c.slug === slug ? 'theme-text' : 'text-muted'}
           >
             {c.name}
           </Link>

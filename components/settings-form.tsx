@@ -84,7 +84,7 @@ export default function SettingsForm({ settings }: { settings: SiteSettings }) {
         <textarea id="cod-notes" className="input" rows={2} value={codNotes} onChange={(e) => setCodNotes(e.target.value)} />
       </div>
 
-      {err && <p className="text-sm text-clay">{err}</p>}
+      {err && <p className="text-sm theme-text">{err}</p>}
       {msg && <p className="text-sm text-muted">{msg}</p>}
 
       <div>

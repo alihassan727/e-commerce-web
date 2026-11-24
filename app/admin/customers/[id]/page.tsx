@@ -21,7 +21,7 @@ export default async function AdminCustomerDetailPage({
     <div>
       <div className="flex items-center justify-between mb-6">
         <h1 className="font-serif text-3xl">Customer</h1>
-        <Link href="/admin/customers" className="text-sm text-clay">
+        <Link href="/admin/customers" className="text-sm theme-text">
           Back to customers
         </Link>
       </div>

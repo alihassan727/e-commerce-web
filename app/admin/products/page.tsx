@@ -49,7 +49,7 @@ export default async function AdminProductsPage() {
                 {p.is_active ? 'Active' : 'Hidden'}
                 {p.is_featured ? ' · Featured' : ''}
               </span>
-              <span className="text-clay">Edit</span>
+              <span className="theme-text">Edit</span>
             </Link>
           ))}
         </div>

@@ -2,16 +2,38 @@
 
 import { useState, type ChangeEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { adminSaveSiteSettings, adminUploadCmsAsset } from '@/lib/actions/account';
+import {
+  adminSaveSiteSettings,
+  adminUploadCmsAsset,
+  adminSaveLogoBranding,
+  type LogoBrandingInput,
+} from '@/lib/actions/account';
 import { saveButtonColor } from '@/lib/actions/admin';
 import type { SiteSettings } from '@/lib/types';
 
 const DEFAULT_COLOR = '#A8472D';
 
-/** Returns true when a string is a valid 3 or 6-digit hex color. */
 function isValidHex(v: string): boolean {
   return /^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$/.test(v.trim());
 }
+
+const FONT_OPTIONS = [
+  { value: 'serif',      label: 'Serif (Fraunces)' },
+  { value: 'sans',       label: 'Sans-serif (IBM Plex Sans)' },
+  { value: 'Georgia',    label: 'Georgia' },
+  { value: 'Times New Roman', label: 'Times New Roman' },
+  { value: 'Arial',      label: 'Arial' },
+  { value: 'Helvetica',  label: 'Helvetica' },
+  { value: 'Verdana',    label: 'Verdana' },
+];
+
+const WEIGHT_OPTIONS = [
+  { value: '300', label: 'Light (300)' },
+  { value: '400', label: 'Regular (400)' },
+  { value: '500', label: 'Medium (500)' },
+  { value: '600', label: 'Semibold (600)' },
+  { value: '700', label: 'Bold (700)' },
+];
 
 export default function SiteSettingsClient({ settings }: { settings: SiteSettings }) {
   const router = useRouter();
@@ -26,6 +48,18 @@ export default function SiteSettingsClient({ settings }: { settings: SiteSetting
   const [uploading, setUploading] = useState<string | null>(null);
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
+
+  // --- Logo branding state ---
+  const [logoMode, setLogoMode] = useState<'image' | 'text'>(settings.logo_mode ?? 'text');
+  const [logoText, setLogoText] = useState(settings.logo_text ?? settings.store_name ?? '');
+  const [logoFont, setLogoFont] = useState(settings.logo_font ?? 'serif');
+  const [logoFontSize, setLogoFontSize] = useState(settings.logo_font_size ?? '1.5rem');
+  const [logoFontWeight, setLogoFontWeight] = useState(settings.logo_font_weight ?? '400');
+  const [logoColor, setLogoColor] = useState(settings.logo_color ?? '#1B1A18');
+  const [logoLetterSpacing, setLogoLetterSpacing] = useState(settings.logo_letter_spacing ?? 'normal');
+  const [savingLogo, setSavingLogo] = useState(false);
+  const [logoMsg, setLogoMsg] = useState<string | null>(null);
+  const [logoErr, setLogoErr] = useState<string | null>(null);
 
   // --- Button color state ---
   const [btnColor, setBtnColor] = useState<string>(settings.button_color ?? DEFAULT_COLOR);
@@ -60,7 +94,7 @@ export default function SiteSettingsClient({ settings }: { settings: SiteSetting
     if (!res.ok) { setColorErr(res.error); return; }
     setBtnColor(normalized);
     setBtnColorInput(normalized);
-    setColorMsg('Button color saved. Refresh the public site to see the change.');
+    setColorMsg('Theme color saved.');
     router.refresh();
   }
 
@@ -71,7 +105,26 @@ export default function SiteSettingsClient({ settings }: { settings: SiteSetting
     setColorMsg(null);
   }
 
-  // --- Existing upload & save ---
+  async function onSaveLogo() {
+    setLogoErr(null);
+    setLogoMsg(null);
+    setSavingLogo(true);
+    const input: LogoBrandingInput = {
+      logo_mode:           logoMode,
+      logo_text:           logoText,
+      logo_font:           logoFont,
+      logo_font_size:      logoFontSize,
+      logo_font_weight:    logoFontWeight,
+      logo_color:          logoColor,
+      logo_letter_spacing: logoLetterSpacing,
+    };
+    const res = await adminSaveLogoBranding(input);
+    setSavingLogo(false);
+    if (!res.ok) { setLogoErr(res.error); return; }
+    setLogoMsg('Logo settings saved.');
+    router.refresh();
+  }
+
   async function onUpload(field: 'logo' | 'favicon', e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -103,24 +156,109 @@ export default function SiteSettingsClient({ settings }: { settings: SiteSetting
     router.refresh();
   }
 
+  // Live preview font family
+  const previewFontFamily =
+    logoFont === 'serif'
+      ? 'var(--font-fraunces), Georgia, serif'
+      : logoFont === 'sans'
+        ? 'var(--font-inter), system-ui, sans-serif'
+        : logoFont;
+
   return (
     <div>
       <h1 className="font-serif text-3xl mb-6 text-ink dark:text-dark-ink">Site settings</h1>
       <div className="flex flex-col gap-8 max-w-xl">
 
-        {/* --- Logo --- */}
+        {/* ----------------------------------------------------------------
+            Logo & Branding
+        ---------------------------------------------------------------- */}
         <section>
-          <h2 className="font-medium mb-3 text-ink dark:text-dark-ink">Store logo</h2>
-          {logoUrl && (
-            <div className="border border-line dark:border-dark-line p-2 inline-block mb-3">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
+          <h2 className="font-medium mb-3 text-ink dark:text-dark-ink">Logo &amp; Branding</h2>
+
+          {/* Mode selector */}
+          <div className="flex gap-6 mb-4 text-sm">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="logo_mode" value="image" checked={logoMode === 'image'} onChange={() => setLogoMode('image')} />
+              Image logo
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="radio" name="logo_mode" value="text" checked={logoMode === 'text'} onChange={() => setLogoMode('text')} />
+              Text logo
+            </label>
+          </div>
+
+          {logoMode === 'image' ? (
+            <div className="flex flex-col gap-3">
+              {logoUrl ? (
+                <div className="border border-line dark:border-dark-line p-3 inline-flex flex-col gap-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={logoUrl} alt="Logo" className="h-12 object-contain" />
+                  <p className="text-xs text-muted dark:text-dark-muted">Current logo</p>
+                </div>
+              ) : (
+                <p className="text-sm text-muted dark:text-dark-muted">No image uploaded yet. Text fallback will be used.</p>
+              )}
+              <label className="btn btn-outline cursor-pointer w-fit">
+                {uploading === 'logo' ? 'Uploading...' : logoUrl ? 'Replace logo' : 'Upload logo'}
+                <input type="file" accept="image/png,image/jpeg,image/svg+xml,image/webp" className="hidden" onChange={(e) => onUpload('logo', e)} />
+              </label>
+              <p className="text-xs text-muted dark:text-dark-muted">
+                Recommended: PNG or SVG with transparent background, max height 48px.
+              </p>
+            </div>
+          ) : (
+            /* Text logo settings */
+            <div className="flex flex-col gap-3">
+              <div className="field">
+                <label htmlFor="logo-text">Logo text</label>
+                <input id="logo-text" className="input" value={logoText} onChange={(e) => setLogoText(e.target.value)} placeholder={settings.store_name} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="field">
+                  <label htmlFor="logo-font">Font</label>
+                  <select id="logo-font" className="input" value={logoFont} onChange={(e) => setLogoFont(e.target.value)}>
+                    {FONT_OPTIONS.map((f) => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                </div>
+                <div className="field">
+                  <label htmlFor="logo-weight">Weight</label>
+                  <select id="logo-weight" className="input" value={logoFontWeight} onChange={(e) => setLogoFontWeight(e.target.value)}>
+                    {WEIGHT_OPTIONS.map((w) => <option key={w.value} value={w.value}>{w.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="field">
+                  <label htmlFor="logo-size">Font size</label>
+                  <input id="logo-size" className="input" value={logoFontSize} onChange={(e) => setLogoFontSize(e.target.value)} placeholder="1.5rem" />
+                </div>
+                <div className="field">
+                  <label htmlFor="logo-spacing">Letter spacing</label>
+                  <input id="logo-spacing" className="input" value={logoLetterSpacing} onChange={(e) => setLogoLetterSpacing(e.target.value)} placeholder="normal" />
+                </div>
+              </div>
+              <div className="field max-w-[12rem]">
+                <label htmlFor="logo-color">Color</label>
+                <div className="flex gap-2 items-center">
+                  <input id="logo-color-picker" type="color" className="h-9 w-12 border border-line dark:border-dark-line p-0.5 cursor-pointer" value={logoColor} onChange={(e) => setLogoColor(e.target.value.toUpperCase())} />
+                  <input id="logo-color" className="input font-mono uppercase" value={logoColor} onChange={(e) => setLogoColor(e.target.value)} maxLength={7} />
+                </div>
+              </div>
+              {/* Live preview */}
+              <div className="border border-line dark:border-dark-line p-4 bg-canvas dark:bg-dark-canvas">
+                <p className="text-xs text-muted dark:text-dark-muted mb-2">Preview</p>
+                <span style={{ fontFamily: previewFontFamily, fontSize: logoFontSize, fontWeight: logoFontWeight, color: logoColor, letterSpacing: logoLetterSpacing === 'normal' ? undefined : logoLetterSpacing }}>
+                  {logoText || settings.store_name || 'Atlas Clothier'}
+                </span>
+              </div>
             </div>
           )}
-          <label className="btn btn-outline cursor-pointer">
-            {uploading === 'logo' ? 'Uploading' : 'Upload logo'}
-            <input type="file" accept="image/*" className="hidden" onChange={(e) => onUpload('logo', e)} />
-          </label>
+
+          {logoErr && <p className="text-sm theme-text mt-2">{logoErr}</p>}
+          {logoMsg && <p className="text-sm text-muted dark:text-dark-muted mt-2">{logoMsg}</p>}
+          <button className="btn btn-primary mt-3" onClick={onSaveLogo} disabled={savingLogo}>
+            {savingLogo ? 'Saving' : 'Save logo settings'}
+          </button>
         </section>
 
         {/* --- Announcement bar --- */}
@@ -159,52 +297,27 @@ export default function SiteSettingsClient({ settings }: { settings: SiteSetting
         </button>
 
         {/* ----------------------------------------------------------------
-            Global button color
+            Global theme color
         ---------------------------------------------------------------- */}
         <section className="border-t border-line dark:border-dark-line pt-6">
           <h2 className="font-medium mb-1 text-ink dark:text-dark-ink">Global theme color</h2>
           <p className="text-sm text-muted dark:text-dark-muted mb-4">
-            Controls the accent color used across the entire website: primary buttons, active links, navigation highlights, focus rings, order status indicators, tracking progress, and image selection. Default: {DEFAULT_COLOR}.
+            Controls the accent color across the website. Default: {DEFAULT_COLOR}.
           </p>
 
           <div className="flex flex-wrap items-end gap-4 mb-4">
-            {/* Color picker */}
             <div className="field">
               <label htmlFor="btn-color-picker">Color picker</label>
-              <input
-                id="btn-color-picker"
-                type="color"
-                className="h-10 w-16 cursor-pointer border border-line dark:border-dark-line p-0.5 bg-canvas dark:bg-dark-canvas"
-                value={btnColor}
-                onChange={onColorPickerChange}
-              />
+              <input id="btn-color-picker" type="color" className="h-10 w-16 cursor-pointer border border-line dark:border-dark-line p-0.5 bg-canvas dark:bg-dark-canvas" value={btnColor} onChange={onColorPickerChange} />
             </div>
-
-            {/* Hex text input */}
             <div className="field">
               <label htmlFor="btn-color-hex">Hex value</label>
-              <input
-                id="btn-color-hex"
-                className={`input w-36 font-mono uppercase ${!isValidHex(btnColorInput) ? 'theme-border' : ''}`}
-                value={btnColorInput}
-                onChange={onColorTextChange}
-                maxLength={7}
-                placeholder="#A8472D"
-              />
-              {!isValidHex(btnColorInput) && (
-                <p className="text-xs theme-text">Invalid hex color</p>
-              )}
+              <input id="btn-color-hex" className={`input w-36 font-mono uppercase ${!isValidHex(btnColorInput) ? 'theme-border' : ''}`} value={btnColorInput} onChange={onColorTextChange} maxLength={7} placeholder="#A8472D" />
+              {!isValidHex(btnColorInput) && <p className="text-xs theme-text">Invalid hex color</p>}
             </div>
-
-            {/* Live preview */}
             <div className="field">
               <label>Preview</label>
-              <button
-                type="button"
-                className="btn"
-                style={{ backgroundColor: isValidHex(btnColor) ? btnColor : DEFAULT_COLOR, color: '#fffdf9', borderColor: isValidHex(btnColor) ? btnColor : DEFAULT_COLOR }}
-                disabled
-              >
+              <button type="button" className="btn" style={{ backgroundColor: isValidHex(btnColor) ? btnColor : DEFAULT_COLOR, color: '#fffdf9', borderColor: isValidHex(btnColor) ? btnColor : DEFAULT_COLOR }} disabled>
                 Button preview
               </button>
             </div>
@@ -217,18 +330,10 @@ export default function SiteSettingsClient({ settings }: { settings: SiteSetting
             <button className="btn btn-primary" onClick={onSaveColor} disabled={savingColor || !isValidHex(btnColorInput)}>
               {savingColor ? 'Saving' : 'Save theme color'}
             </button>
-            <button
-              type="button"
-              className="btn btn-ghost text-sm"
-              onClick={onResetColor}
-              title={`Reset to default: ${DEFAULT_COLOR}`}
-            >
+            <button type="button" className="btn btn-ghost text-sm" onClick={onResetColor} title={`Reset to default: ${DEFAULT_COLOR}`}>
               Reset to default
             </button>
           </div>
-          <p className="text-xs text-muted dark:text-dark-muted mt-3">
-            After saving, the new color is applied to: primary buttons, accent links, active navigation items, focus rings, order tracking progress, gallery selection highlights, and all accent-colored elements across the public website and admin panel.
-          </p>
         </section>
       </div>
     </div>

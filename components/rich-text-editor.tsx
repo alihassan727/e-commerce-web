@@ -3,6 +3,7 @@
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import Link from '@tiptap/extension-link';
+import Placeholder from '@tiptap/extension-placeholder';
 
 /**
  * Tiptap-based rich text editor used for CMS page content.
@@ -22,8 +23,11 @@ export default function RichTextEditor({
     extensions: [
       StarterKit,
       Link.configure({ openOnClick: false }),
+      // Renders placeholder text only while empty — it is never part of the
+      // saved HTML (injecting it into `content` would persist it on save).
+      Placeholder.configure({ placeholder: placeholder ?? 'Start writing...' }),
     ],
-    content: value || `<p>${placeholder ?? ''}</p>`,
+    content: value || '',
     onUpdate: ({ editor }) => {
       onChange(editor.getHTML());
     },

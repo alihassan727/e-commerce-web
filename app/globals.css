@@ -2,93 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
-/* Design system: warm off-white canvas, ink text, single clay accent.
-   Sharp radii, no shadows, no gradients, no hover animations.
+/* Design system: warm alabaster canvas, elevated surface, deep ink text,
+   single dynamic brand accent, soft corner radii, tasteful micro-transitions.
    Dark mode via .dark class on <html>.
-
-   THEME COLOR SYSTEM
-   ------------------
-   The site accent color is controlled by four CSS custom properties injected
-   into :root by app/layout.tsx from the value saved in site_settings.button_color.
-
-     --accent        base accent color (default #A8472D)
-     --accent-dark   slightly darker shade for pressed/border states
-     --accent-tint   very light tint for placeholder/highlight backgrounds
-     --accent-text   foreground text on accent backgrounds (always #FFFDF9)
-     --btn-color     alias for --accent (keeps legacy btn-primary rule working)
-
-   Every hardcoded #A8472D / clay / clay-tint / clay-dark reference in this
-   file is replaced by the appropriate CSS variable so a single save to
-   site_settings updates the entire site at next server render.
 */
 
-/* ---------------------------------------------------------------------------
-   Semantic accent utility classes
-   Use these instead of Tailwind text-clay / bg-clay / border-clay / clay-tint.
-   They automatically track the saved theme color.
---------------------------------------------------------------------------- */
-
-/** Accent-colored text: links, active nav items, action labels */
 .theme-text {
   color: var(--accent, #a8472d);
 }
 
-/** Accent background: active buttons, tracking dots, RTE toolbar active */
 .theme-bg {
   background-color: var(--accent, #a8472d);
   color: var(--accent-text, #fffdf9);
 }
 
-/** Accent border: active gallery thumbnails, published badges */
 .theme-border {
   border-color: var(--accent, #a8472d);
 }
 
-/** Accent tint background: placeholder images, hero fallback, code snippets */
 .theme-tint {
   background-color: var(--accent-tint, #e9d8cf);
 }
 
-/* ---------------------------------------------------------------------------
-   :root defaults (overridden by the inline <style> from layout.tsx)
---------------------------------------------------------------------------- */
 :root {
   color-scheme: light;
-  --accent:      #A8472D;
-  --accent-dark: #7E3520;
-  --accent-tint: #E9D8CF;
-  --accent-text: #FFFDF9;
-  --btn-color:      #A8472D;
-  --btn-color-dark: #7E3520;
+  --accent: #a8472d;
+  --accent-dark: #7e3520;
+  --accent-tint: #e9d8cf;
+  --accent-text: #fffdf9;
+  --btn-color: #a8472d;
+  --btn-color-dark: #7e3520;
 }
 
 html,
 body {
-  background-color: #f6f2ec; /* canvas */
-  color: #1b1a18; /* ink */
+  background-color: #f6f2ec;
+  color: #1b1a18;
 }
 
 html.dark,
 html.dark body {
-  background-color: #1a1916; /* dark-canvas */
-  color: #ede9e3; /* dark-ink */
+  background-color: #161513;
+  color: #ede9e3;
   color-scheme: dark;
 }
 
 body {
-  font-family: var(--font-ibm-plex), system-ui, sans-serif;
+  font-family: var(--font-inter), system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Respect the "no hover animation" constraint: disable transitions globally. */
-*,
-*::before,
-*::after {
-  transition: none !important;
-  animation: none !important;
-}
-
-/* Form controls inherit the theme; borders only, no shadows. */
 input,
 select,
 textarea,
@@ -97,16 +61,16 @@ button {
   color: inherit;
 }
 
-input:focus,
-select:focus,
-textarea:focus {
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible,
+a:focus-visible {
   outline: 2px solid var(--accent, #a8472d);
-  outline-offset: 0;
+  outline-offset: 2px;
 }
 
-/* ---------------------------------------------------------------------------
-   Field wrapper
---------------------------------------------------------------------------- */
+/* Field wrapper */
 .field {
   display: flex;
   flex-direction: column;
@@ -115,22 +79,27 @@ textarea:focus {
 
 .field label {
   font-size: 0.8125rem;
-  color: #6b6660; /* muted */
+  font-weight: 500;
+  color: #6b6660;
 }
 
 html.dark .field label {
-  color: #8c8580; /* dark-muted */
+  color: #9a938a;
 }
 
-/* ---------------------------------------------------------------------------
-   Input / textarea / select
---------------------------------------------------------------------------- */
+/* Input / textarea / select */
 .input {
   width: 100%;
-  border: 1px solid #d9d2c7; /* line */
-  background-color: #fffdf9;
-  padding: 0.5rem 0.625rem;
-  border-radius: 2px;
+  border: 1px solid #d9d2c7;
+  background-color: #fbf9f5;
+  padding: 0.5625rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  transition: border-color 150ms ease, background-color 150ms ease;
+}
+
+.input:hover {
+  border-color: #bfb6a8;
 }
 
 .input::placeholder {
@@ -138,35 +107,44 @@ html.dark .field label {
 }
 
 html.dark .input {
-  border-color: #3a3832; /* dark-line */
-  background-color: #242220; /* dark-input */
+  border-color: #33302b;
+  background-color: #24221f;
   color: #ede9e3;
+}
+
+html.dark .input:hover {
+  border-color: #4a453e;
 }
 
 html.dark .input::placeholder {
   color: #6b6660;
 }
 
-/* ---------------------------------------------------------------------------
-   Buttons
---------------------------------------------------------------------------- */
+/* Buttons */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
-  border-radius: 2px;
-  padding: 0.55rem 1rem;
+  border-radius: 6px;
+  padding: 0.625rem 1.25rem;
   font-size: 0.875rem;
   font-weight: 500;
+  line-height: 1.25;
   border: 1px solid transparent;
   cursor: pointer;
+  transition: background-color 150ms ease, border-color 150ms ease, color 150ms ease, opacity 150ms ease;
 }
 
 .btn-primary {
   background-color: var(--accent, #a8472d);
   color: var(--accent-text, #fffdf9);
   border-color: var(--accent, #a8472d);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-dark, #7e3520);
+  border-color: var(--accent-dark, #7e3520);
 }
 
 .btn-primary:disabled {
@@ -180,9 +158,19 @@ html.dark .input::placeholder {
   border-color: #1b1a18;
 }
 
+.btn-outline:hover:not(:disabled) {
+  background-color: #1b1a18;
+  color: #f6f2ec;
+}
+
 html.dark .btn-outline {
   color: #ede9e3;
   border-color: #ede9e3;
+}
+
+html.dark .btn-outline:hover:not(:disabled) {
+  background-color: #ede9e3;
+  color: #161513;
 }
 
 .btn-ghost {
@@ -191,45 +179,40 @@ html.dark .btn-outline {
   border-color: #d9d2c7;
 }
 
-html.dark .btn-ghost {
-  color: #ede9e3;
-  border-color: #3a3832;
+.btn-ghost:hover:not(:disabled) {
+  background-color: #ece6dc;
+  border-color: #bfb6a8;
 }
 
-/* ---------------------------------------------------------------------------
-   Layout helpers
---------------------------------------------------------------------------- */
+html.dark .btn-ghost {
+  color: #ede9e3;
+  border-color: #33302b;
+}
+
+html.dark .btn-ghost:hover:not(:disabled) {
+  background-color: #24221f;
+  border-color: #4a453e;
+}
+
+/* Layout helpers */
 .container-page {
-  max-width: 72rem;
+  max-width: 78rem;
   margin-inline: auto;
   padding-inline: 1rem;
 }
 
+@media (min-width: 640px) {
+  .container-page {
+    padding-inline: 1.5rem;
+  }
+}
+
 .divider {
-  border-top: 1px solid #d9d2c7;
+  border-top: 1px solid #e2dbd0;
 }
 
 html.dark .divider {
-  border-top-color: #3a3832;
-}
-
-/* ---------------------------------------------------------------------------
-   Dark mode: surface cards / bordered blocks
---------------------------------------------------------------------------- */
-html.dark .border-line {
-  border-color: #3a3832;
-}
-
-html.dark .bg-canvas {
-  background-color: #1a1916;
-}
-
-html.dark .text-ink {
-  color: #ede9e3;
-}
-
-html.dark .text-muted {
-  color: #8c8580;
+  border-top-color: #33302b;
 }
 
 /* Announcement bar */
@@ -237,11 +220,14 @@ html.dark .text-muted {
   background-color: #1b1a18;
   color: #f6f2ec;
   text-align: center;
-  padding: 0.4rem 1rem;
-  font-size: 0.8125rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.03em;
+  font-weight: 500;
 }
 
 html.dark .announcement-bar {
-  background-color: #242220;
+  background-color: #1e1c19;
   color: #ede9e3;
+  border-bottom: 1px solid #33302b;
 }

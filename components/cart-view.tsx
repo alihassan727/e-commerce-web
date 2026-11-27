@@ -32,15 +32,31 @@ export default function CartView({ currency }: { currency: string }) {
             className="flex items-start justify-between gap-4 border-b border-line pb-4"
           >
             <div className="flex-1">
-              <Link href={`/product/${item.slug}`} className="font-medium">
-                {item.title}
-              </Link>
-              {item.variant_label && (
-                <p className="text-sm text-muted">{item.variant_label}</p>
-              )}
-              <p className="text-sm text-muted mt-1">
-                {formatPrice(item.price, currency)} each
-              </p>
+              <div className="flex items-start gap-3">
+                {item.image_url ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={item.image_url}
+                    alt={item.title}
+                    className="w-16 h-20 object-cover border border-line shrink-0"
+                    loading="lazy"
+                  />
+                ) : null}
+                <div className="min-w-0">
+                  <Link href={`/product/${item.slug}`} className="font-medium">
+                    {item.title}
+                  </Link>
+                  {(item.color_name || item.size || item.variant_label) && (
+                    <p className="text-sm text-muted">
+                      {[item.color_name, item.size].filter(Boolean).join(' / ') ||
+                        item.variant_label}
+                    </p>
+                  )}
+                  <p className="text-sm text-muted mt-1">
+                    {formatPrice(item.price, currency)} each
+                  </p>
+                </div>
+              </div>
               <div className="flex items-center gap-3 mt-3">
                 <div>
                   <p className="text-xs text-muted mb-1">Quantity</p>

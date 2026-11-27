@@ -1,0 +1,143 @@
+-- ============================================================================
+-- Atlas Clothier — OPTIONAL database hardening proposal
+--
+-- STATUS: NOT APPLIED. This file is deliberately outside supabase/migrations/
+-- so it is never auto-run. Review it, test it on a staging database, then apply
+-- manually in the Supabase SQL editor or promote it to a numbered migration.
+--
+-- Nothing here is required for the application to function. Each item below
+-- explains the problem it closes and the risk of applying it.
+-- ============================================================================
+
+
+-- ----------------------------------------------------------------------------
+-- 1) Prevent duplicate reviews from a race condition
+--
+-- Why: `submitReview` checks for an existing row and then inserts. Two
+-- concurrent submissions (double click, retried request) can both pass the
+-- check and create two reviews for the same customer + product.
+--
+-- Safety: run the duplicate audit query FIRST. If it returns rows, resolve
+-- them before creating the unique index or the CREATE INDEX will fail.
+--
+--   select customer_id, product_id, count(*)
+--   from public.product_reviews
+--   where customer_id is not null
+--   group by customer_id, product_id
+--   having count(*) > 1;
+--
+-- Uncomment to apply:
+--
+-- create unique index if not exists idx_reviews_one_per_customer_product
+--   on public.product_reviews (customer_id, product_id)
+--   where customer_id is not null;
+--
+-- Risk: low. No column or data is changed; only duplicate inserts are rejected.
+
+
+-- ----------------------------------------------------------------------------
+-- 2) Stop anonymous reads of hidden variants and images
+--
+-- Why: the 0001 policies allow `select` on public.variants and
+-- public.product_images for anon/authenticated with `using (true)`. Inactive
+-- variants (and their SKUs/stock) and images of inactive products are therefore
+-- reachable through the public PostgREST API with the anon key, even though the
+-- UI filters them out.
+--
+-- What still works afterwards: product pages read variants of active products
+-- (the app filters is_active in the UI as before), and color_image reads are
+-- already restricted to active colors by the 0009 policy.
+--
+-- Uncomment to apply after checking that no admin screen reads these tables
+-- with the anon key (admin screens use the service-role client, which bypasses
+-- RLS):
+--
+-- drop policy if exists "public read variants" on public.variants;
+-- create policy "public read active variants" on public.variants
+--   for select to anon, authenticated
+--   using (
+--     is_active = true
+--     and exists (
+--       select 1 from public.products p
+--       where p.id = variants.product_id and p.is_active = true
+--     )
+--   );
+--
+-- drop policy if exists "public read product_images" on public.product_images;
+-- create policy "public read active product images" on public.product_images
+--   for select to anon, authenticated
+--   using (
+--     exists (
+--       select 1 from public.products p
+--       where p.id = product_images.product_id and p.is_active = true
+--     )
+--   );
+--
+-- Risk: medium. Any consumer that deliberately reads hidden variants with the
+-- anon key (custom scripts, n8n calls using the anon key) will stop seeing
+-- them. n8n should use the service-role key for stock checks.
+
+
+-- ----------------------------------------------------------------------------
+-- 3) Restore stock when a confirmed order is cancelled  (BEHAVIOUR CHANGE)
+--
+-- Why: confirm_order deducts stock. admin_update_order_status allows
+-- confirmed -> cancelled but does not put the stock back, so cancelled orders
+-- permanently reduce inventory.
+--
+-- This is a change to an RPC contract and must not be applied automatically.
+-- Proposed change, inside admin_update_order_status, immediately before the
+-- final UPDATE (step 8), only when v_was_confirmed is true:
+--
+--   if p_status = 'cancelled'::public.order_status and v_was_confirmed then
+--     for v_item in
+--       select oi.variant_id, sum(oi.quantity) as total_qty
+--       from public.order_items oi
+--       where oi.order_id = p_order_id and oi.variant_id is not null
+--       group by oi.variant_id
+--     loop
+--       update public.variants v
+--       set stock = v.stock + v_item.total_qty
+--       where v.id = v_item.variant_id;
+--     end loop;
+--
+--     for v_item in
+--       select oi.product_id, sum(oi.quantity) as total_qty
+--       from public.order_items oi
+--       where oi.order_id = p_order_id and oi.variant_id is null
+--       group by oi.product_id
+--     loop
+--       update public.products p
+--       set stock = p.stock + v_item.total_qty
+--       where p.id = v_item.product_id;
+--     end loop;
+--
+--     insert into public.order_audit (order_id, event, payload)
+--     values (p_order_id, 'restocked',
+--             jsonb_build_object('reason', 'cancelled', 'restocked_at', now()));
+--   end if;
+--
+-- Requirements before approval:
+--   * Decide whether cancelling an already-delivered order may restock
+--     (delivered -> cancelled currently exists as a transition).
+--   * Guard against re-cancelling: v_current <> 'cancelled' is already ensured
+--     by the same-status no-op and the transition table, so stock is restored
+--     at most once.
+--   * Test concurrent cancel + confirm_order on staging.
+--
+-- Risk: high if untested. Leave unapplied until explicitly approved.
+
+
+-- ----------------------------------------------------------------------------
+-- 4) Read-only orphan audit (safe to run: SELECT only, changes nothing)
+--
+-- Lists storage objects with no database reference. Use it to review storage
+-- usage; do not delete files solely on this basis (soft-deleted colours and
+-- sizes intentionally keep their rows and images).
+--
+--   select o.name, o.bucket_id
+--   from storage.objects o
+--   where o.bucket_id = 'product-images'
+--     and o.name not in (select storage_path from public.product_images)
+--     and o.name not in (select storage_path from public.color_images);
+-- ----------------------------------------------------------------------------

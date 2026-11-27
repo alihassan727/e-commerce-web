@@ -1,12 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { sanitizeSearchTerm } from '@/lib/search';
 import type {
+  CmsFeature,
   Customer,
   CustomerAddress,
   Order,
   OrderItem,
   OrderTrackingEvent,
   OrderWithItems,
+  SocialLink,
   SupportTicket,
   TicketNote,
 } from '@/lib/types';
@@ -60,14 +63,20 @@ export async function getMyAddresses(customerId: string): Promise<CustomerAddres
   return (data ?? []) as CustomerAddress[];
 }
 
-/** Returns all orders with items for the signed-in customer. */
-export async function getMyOrders(customerId: string): Promise<OrderWithItems[]> {
+/** Returns all orders with items for the signed-in customer (matched by customer_id or unlinked guest orders with matching email). */
+export async function getMyOrders(customerId: string, customerEmail?: string | null): Promise<OrderWithItems[]> {
   const admin = createAdminClient();
-  const { data: orders } = await admin
+  let q = admin
     .from('orders')
     .select('*')
-    .eq('customer_id', customerId)
     .order('created_at', { ascending: false });
+  const normalizedEmail = customerEmail?.trim().toLowerCase();
+  if (normalizedEmail) {
+    q = q.or(`customer_id.eq.${customerId},and(customer_id.is.null,email.eq.${normalizedEmail})`);
+  } else {
+    q = q.eq('customer_id', customerId);
+  }
+  const { data: orders } = await q;
   if (!orders || orders.length === 0) return [];
   const ids = orders.map((o) => o.id);
   const { data: items } = await admin
@@ -90,14 +99,20 @@ export async function getMyOrders(customerId: string): Promise<OrderWithItems[]>
 export async function getMyOrderDetail(
   orderId: string,
   customerId: string,
+  customerEmail?: string | null,
 ): Promise<{ order: OrderWithItems; tracking: OrderTrackingEvent[] } | null> {
   const admin = createAdminClient();
-  const { data: order } = await admin
+  let q = admin
     .from('orders')
     .select('*')
-    .eq('id', orderId)
-    .eq('customer_id', customerId)
-    .maybeSingle();
+    .eq('id', orderId);
+  const normalizedEmail = customerEmail?.trim().toLowerCase();
+  if (normalizedEmail) {
+    q = q.or(`customer_id.eq.${customerId},and(customer_id.is.null,email.eq.${normalizedEmail})`);
+  } else {
+    q = q.eq('customer_id', customerId);
+  }
+  const { data: order } = await q.maybeSingle();
   if (!order) return null;
   const { data: items } = await admin
     .from('order_items')
@@ -162,10 +177,12 @@ export async function adminListTickets(filter?: {
     q = q.eq('status', filter.status);
   }
   if (filter?.search?.trim()) {
-    const s = filter.search.trim();
-    q = q.or(
-      `ticket_number.ilike.%${s}%,customer_name.ilike.%${s}%,email.ilike.%${s}%`,
-    );
+    const s = sanitizeSearchTerm(filter.search);
+    if (s) {
+      q = q.or(
+        `ticket_number.ilike.%${s}%,customer_name.ilike.%${s}%,email.ilike.%${s}%`,
+      );
+    }
   }
   const { data } = await q;
   return (data ?? []) as AdminTicketRow[];
@@ -213,20 +230,20 @@ export async function getOrderTrackingEvents(
 // Admin CMS social links + features
 // ---------------------------------------------------------------------------
 
-export async function adminListSocialLinks() {
+export async function adminListSocialLinks(): Promise<SocialLink[]> {
   const admin = createAdminClient();
   const { data } = await admin
     .from('social_links')
     .select('*')
     .order('sort_order', { ascending: true });
-  return data ?? [];
+  return (data ?? []) as SocialLink[];
 }
 
-export async function adminListFeatures() {
+export async function adminListFeatures(): Promise<CmsFeature[]> {
   const admin = createAdminClient();
   const { data } = await admin
     .from('cms_features')
     .select('*')
     .order('sort_order', { ascending: true });
-  return data ?? [];
+  return (data ?? []) as CmsFeature[];
 }

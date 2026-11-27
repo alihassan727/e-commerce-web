@@ -2,8 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { createClient } from '@/lib/supabase/client';
-import { deleteAccount } from '@/lib/actions/account';
+import { deleteAccount, signOut } from '@/lib/actions/account';
 
 /**
  * Permanently deletes the user's Supabase account after a two-step
@@ -12,7 +11,6 @@ import { deleteAccount } from '@/lib/actions/account';
  * the local session and redirects to home.
  */
 export default function DeleteAccountButton() {
-  const supabase = createClient();
   const router = useRouter();
 
   // Two-step confirm: first click shows the warning, second click executes.
@@ -32,8 +30,9 @@ export default function DeleteAccountButton() {
       return;
     }
 
-    // Server deleted the auth row. Clear the local session, then redirect.
-    await supabase.auth.signOut();
+    // Server deleted the auth row. Best-effort clear the now-invalid session
+    // cookies, then redirect.
+    await signOut();
     router.push('/');
     router.refresh();
   }

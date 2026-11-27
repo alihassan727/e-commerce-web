@@ -54,7 +54,8 @@ export default async function GatewayPage({ params }: { params: { gateway: strin
         gateway={row.gateway}
         label={meta.label}
         fields={meta.fields}
-        existingCredentials={row.credentials}
+        values={row.values}
+        savedSecretFields={row.savedSecretFields}
       />
     </div>
   );

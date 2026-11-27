@@ -16,10 +16,18 @@ export async function getCurrentUser(): Promise<User | null> {
  * Returns true when the current user's email matches the ADMIN_EMAIL
  * allowlist. This is the single source of truth for admin identity.
  */
+function normalizeEmail(value: string | null | undefined): string {
+  return value?.trim().toLowerCase() ?? '';
+}
+
 export async function isAdmin(): Promise<boolean> {
   const user = await getCurrentUser();
   const adminEmail = process.env.ADMIN_EMAIL;
-  return Boolean(user && adminEmail && user.email === adminEmail);
+  return Boolean(
+    user?.email &&
+      adminEmail &&
+      normalizeEmail(user.email) === normalizeEmail(adminEmail),
+  );
 }
 
 /**

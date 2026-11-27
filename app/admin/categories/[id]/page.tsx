@@ -20,7 +20,7 @@ export default async function EditCategoryPage({
           Back to categories
         </Link>
       </div>
-      <div className="border border-line p-4 max-w-xl">
+      <div className="border border-line dark:border-dark-line p-4 max-w-xl">
         <CategoryForm category={category} />
       </div>
     </div>

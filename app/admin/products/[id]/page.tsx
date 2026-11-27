@@ -27,7 +27,7 @@ export default async function EditProductPage({
 
       <ProductForm product={product} categories={categories} />
 
-      <div className="mt-12 pt-6 border-t border-line">
+      <div className="mt-12 pt-6 border-t border-line dark:border-dark-line">
         <ProductDeleteButton id={product.id} />
       </div>
     </div>

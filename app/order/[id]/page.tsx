@@ -1,7 +1,9 @@
 import { notFound } from 'next/navigation';
 import OrderLookupForm from '@/components/order-lookup-form';
 import OrderStatusBadge from '@/components/order-status-badge';
+import TrackingTimeline from '@/components/tracking-timeline';
 import { getOrderWithItems, canViewOrder } from '@/lib/queries/orders';
+import { getOrderTrackingEvents } from '@/lib/queries/account';
 import { getSiteSettings } from '@/lib/queries/catalog';
 import { formatPrice } from '@/lib/format';
 
@@ -36,6 +38,9 @@ export default async function OrderPage({
     day: 'numeric',
   });
 
+  // Tracking updates are ordered oldest-first for the timeline.
+  const tracking = [...(await getOrderTrackingEvents(order.id))].reverse();
+
   return (
     <section className="container-page py-12 max-w-2xl">
       {placed ? (
@@ -57,11 +62,27 @@ export default async function OrderPage({
 
       <div className="flex flex-col gap-2 mb-8 border-y border-line py-6">
         {order.items.map((item) => (
-          <div key={item.id} className="flex justify-between text-sm">
-            <span>
-              {item.title_snapshot}
-              {item.variant_label_snapshot ? ` (${item.variant_label_snapshot})` : null} x{item.quantity}
-            </span>
+          <div key={item.id} className="flex justify-between gap-3 text-sm">
+            <div className="flex items-start gap-3">
+              {item.image_snapshot_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={item.image_snapshot_url}
+                  alt={item.title_snapshot}
+                  className="w-12 h-16 object-cover border border-line shrink-0"
+                  loading="lazy"
+                />
+              ) : null}
+              <span>
+                {item.title_snapshot}
+                {(item.color_snapshot || item.size_snapshot) ? (
+                  ` (${[item.color_snapshot, item.size_snapshot].filter(Boolean).join(' / ')})`
+                ) : item.variant_label_snapshot ? (
+                  ` (${item.variant_label_snapshot})`
+                ) : null}{' '}
+                x{item.quantity}
+              </span>
+            </div>
             <span>{formatPrice(item.line_total, currency)}</span>
           </div>
         ))}
@@ -98,6 +119,11 @@ export default async function OrderPage({
 
       <div className="mt-8">
         <p className="text-sm text-muted">Cash on delivery.</p>
+      </div>
+
+      <div className="mt-10 border-t border-line dark:border-dark-line pt-6">
+        <h2 className="font-medium mb-4">Delivery progress</h2>
+        <TrackingTimeline currentStatus={order.status} events={tracking} />
       </div>
     </section>
   );

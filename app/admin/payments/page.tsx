@@ -18,8 +18,6 @@ const GATEWAY_META: Record<string, { label: string; description: string }> = {
 
 export default async function AdminPaymentsPage() {
   const gateways = await adminListPaymentGateways();
-  const hasCredentials = (g: (typeof gateways)[number]) =>
-    Object.keys(g.credentials ?? {}).length > 0;
 
   return (
     <div>
@@ -48,9 +46,9 @@ export default async function AdminPaymentsPage() {
         {/* Online gateways */}
         {gateways.map((gw) => {
           const meta = GATEWAY_META[gw.gateway] ?? { label: gw.gateway, description: '' };
-          const configured = hasCredentials(gw);
+          const configured = gw.has_credentials;
           return (
-            <div key={gw.id} className="border border-line dark:border-dark-line p-5">
+            <div key={gw.gateway} className="border border-line dark:border-dark-line p-5">
               <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-3 mb-1">

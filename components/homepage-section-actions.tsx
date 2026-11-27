@@ -43,7 +43,7 @@ export default function HomepageSectionActions({
       <button
         type="button"
         disabled={busy}
-        className="text-muted"
+        className="text-muted dark:text-dark-muted"
         onClick={() => run(() => toggleHomepageSection(id, !isActive))}
       >
         {isActive ? 'Hide' : 'Show'}
@@ -51,7 +51,7 @@ export default function HomepageSectionActions({
       <button
         type="button"
         disabled={busy}
-        className="text-muted"
+        className="text-muted dark:text-dark-muted"
         onClick={async () => {
           if (!window.confirm('Delete this section?')) return;
           await run(() => deleteHomepageSection(id));

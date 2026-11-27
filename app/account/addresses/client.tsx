@@ -12,14 +12,11 @@ function empty(): Omit<CustomerAddress, 'id' | 'customer_id' | 'created_at'> {
 }
 
 export default function AddressBook({
-  customerId: _cid,
   initialAddresses,
 }: {
-  customerId: string;
   initialAddresses: CustomerAddress[];
 }) {
   const router = useRouter();
-  const [addresses, setAddresses] = useState(initialAddresses);
   const [editing, setEditing] = useState<Partial<CustomerAddress> | null>(null);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);

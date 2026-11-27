@@ -85,7 +85,7 @@ export default function SettingsForm({ settings }: { settings: SiteSettings }) {
       </div>
 
       {err && <p className="text-sm theme-text">{err}</p>}
-      {msg && <p className="text-sm text-muted">{msg}</p>}
+      {msg && <p className="text-sm text-muted dark:text-dark-muted">{msg}</p>}
 
       <div>
         <button type="button" className="btn btn-primary" onClick={onSave} disabled={saving}>

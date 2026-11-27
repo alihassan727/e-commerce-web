@@ -4,6 +4,7 @@ import { useState, type FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
+import { safeNextPath } from '@/lib/safe-redirect';
 
 // ---------------------------------------------------------------------------
 // Signup flow — two-step OTP verification
@@ -50,6 +51,7 @@ export default function AuthForm({
 }) {
   const supabase = createClient();
   const router = useRouter();
+  const safeNext = safeNextPath(next);
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -135,7 +137,7 @@ export default function AuthForm({
       return;
     }
 
-    router.push(next);
+    router.push(safeNext);
     router.refresh();
   }
 
@@ -191,7 +193,7 @@ export default function AuthForm({
       setError(loginError.message);
       return;
     }
-    router.push(next);
+    router.push(safeNext);
     router.refresh();
   }
 
@@ -314,7 +316,7 @@ export default function AuthForm({
         <p className="text-sm text-muted">
           Already have an account?{' '}
           <Link
-            href={`/login?next=${encodeURIComponent(next)}`}
+            href={`/login?next=${encodeURIComponent(safeNext)}`}
             className="theme-text"
           >
             Sign in
@@ -362,7 +364,7 @@ export default function AuthForm({
       <p className="text-sm text-muted">
         New here?{' '}
         <Link
-          href={`/signup?next=${encodeURIComponent(next)}`}
+          href={`/signup?next=${encodeURIComponent(safeNext)}`}
           className="theme-text"
         >
           Create an account

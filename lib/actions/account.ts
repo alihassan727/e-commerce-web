@@ -4,7 +4,22 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/admin';
+import { isUuid } from '@/lib/search';
 import type { TicketCategory } from '@/lib/types';
+
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+const CMS_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+};
+const LOGO_IMAGE_TYPES: Record<string, string> = {
+  ...CMS_IMAGE_TYPES,
+  'image/svg+xml': 'svg',
+  'image/x-icon': 'ico',
+  'image/vnd.microsoft.icon': 'ico',
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -27,6 +42,17 @@ async function getCustomerId(userId: string): Promise<string | null> {
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Clears the Supabase session server-side. Kept as an action so the account
+ * and navbar sign-out controls do not need to ship the browser Supabase SDK.
+ */
+export async function signOut(): Promise<ActionResult> {
+  const supabase = createClient();
+  const { error } = await supabase.auth.signOut();
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
 
 // ---------------------------------------------------------------------------
 // Profile update
@@ -62,28 +88,6 @@ export async function updateProfile(input: ProfileInput): Promise<ActionResult> 
   revalidatePath('/account');
   revalidatePath('/account/profile');
   return { ok: true };
-}
-
-/** Called from createOrder after a successful order to sync delivery info to profile. */
-export async function syncProfileFromOrder(
-  userId: string,
-  data: { phone: string; address: string; city: string },
-): Promise<void> {
-  const admin = createAdminClient();
-  const { data: cust } = await admin
-    .from('customers')
-    .select('id,phone,address,city')
-    .eq('auth_uid', userId)
-    .maybeSingle();
-  if (!cust) return;
-  // Only fill in fields that are currently empty.
-  const patch: Record<string, string> = {};
-  if (!cust.phone && data.phone) patch.phone = data.phone;
-  if (!cust.address && data.address) patch.address = data.address;
-  if (!cust.city && data.city) patch.city = data.city;
-  if (Object.keys(patch).length > 0) {
-    await admin.from('customers').update(patch).eq('id', cust.id);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -238,6 +242,28 @@ export async function submitTicket(input: TicketInput): Promise<TicketResult> {
     .maybeSingle();
   if (!customer) return { ok: false, error: 'Customer record not found.' };
 
+  // A related order may only be referenced when it belongs to this customer
+  // (linked customer row, or a guest order placed with the same email).
+  let relatedOrderId: string | null = null;
+  const rawOrderId = input.order_id?.trim() ?? '';
+  if (rawOrderId) {
+    if (!isUuid(rawOrderId)) {
+      return { ok: false, error: 'Enter a valid order ID or leave the field empty.' };
+    }
+    const { data: order } = await admin
+      .from('orders')
+      .select('id,customer_id,email')
+      .eq('id', rawOrderId)
+      .maybeSingle();
+    const guestEmailMatches =
+      order && order.customer_id === null &&
+      String(order.email ?? '').toLowerCase() === customer.email.toLowerCase();
+    if (!order || (order.customer_id !== customer.id && !guestEmailMatches)) {
+      return { ok: false, error: 'That order does not belong to your account.' };
+    }
+    relatedOrderId = order.id as string;
+  }
+
   // Duplicate check: same customer + subject + description in last 60 seconds.
   const since = new Date(Date.now() - 60_000).toISOString();
   const { data: existing } = await admin
@@ -263,7 +289,7 @@ export async function submitTicket(input: TicketInput): Promise<TicketResult> {
       phone: input.phone?.trim() || null,
       subject: input.subject.trim(),
       category: input.category,
-      order_id: input.order_id?.trim() || null,
+      order_id: relatedOrderId,
       description: input.description.trim(),
       status: 'open',
     })
@@ -281,7 +307,7 @@ export async function submitTicket(input: TicketInput): Promise<TicketResult> {
     phone: input.phone?.trim() ?? '',
     subject: input.subject.trim(),
     category: input.category,
-    order_id: input.order_id?.trim() ?? null,
+    order_id: relatedOrderId,
     description: input.description.trim(),
     submitted_at: new Date().toISOString(),
   });
@@ -511,15 +537,53 @@ export async function adminSaveSiteSettings(input: {
 }): Promise<ActionResult> {
   await requireAdmin();
   const admin = createAdminClient();
-  const { error } = await admin.from('site_settings').update({
+  const { error } = await admin.from('site_settings').upsert({
+    id: 1,
     announcement_text: input.announcement_text.trim() || null,
     announcement_active: input.announcement_active,
     seo_title: input.seo_title.trim() || null,
     meta_description: input.meta_description.trim() || null,
-  }).eq('id', 1);
+  });
   if (error) return { ok: false, error: error.message };
   revalidatePath('/admin/cms/site');
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
+  return { ok: true };
+}
+
+export interface LogoBrandingInput {
+  logo_mode: 'image' | 'text';
+  logo_text: string;
+  logo_font: string;
+  logo_font_size: string;
+  logo_font_weight: string;
+  logo_color: string;
+  logo_letter_spacing: string;
+}
+
+export async function adminSaveLogoBranding(
+  input: LogoBrandingInput,
+): Promise<ActionResult> {
+  await requireAdmin();
+  const admin = createAdminClient();
+  const { error } = await admin.from('site_settings').upsert({
+    id:                   1,
+    logo_mode:           input.logo_mode,
+    logo_text:           input.logo_text.trim() || null,
+    logo_font:           input.logo_font || 'serif',
+    logo_font_size:      input.logo_font_size || '1.5rem',
+    logo_font_weight:    input.logo_font_weight || '400',
+    logo_color:          input.logo_color || '#1B1A18',
+    logo_letter_spacing: input.logo_letter_spacing || 'normal',
+  });
+  if (error) return { ok: false, error: error.message };
+  revalidatePath('/admin/cms/site');
+  revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true };
 }
 
@@ -530,7 +594,26 @@ export async function adminUploadCmsAsset(formData: FormData): Promise<{ ok: tru
   const field = String(formData.get('field') ?? '');
   if (!(file instanceof File)) return { ok: false, error: 'No file provided.' };
 
-  const ext = file.name.split('.').pop()?.toLowerCase() ?? 'jpg';
+  // Only these prefixes may be written to the public cms-assets bucket.
+  // Category ids are UUIDs supplied by the admin UI.
+  const isLogo = field === 'logo';
+  const isFavicon = field === 'favicon';
+  const isHero = field === 'hero-desktop' || field === 'hero-mobile';
+  const isCategory = /^category-[0-9a-f-]{36}$/i.test(field);
+  if (!isLogo && !isFavicon && !isHero && !isCategory) {
+    return { ok: false, error: 'Invalid upload destination.' };
+  }
+
+  if (file.size === 0) return { ok: false, error: 'The selected file is empty.' };
+  if (file.size > MAX_UPLOAD_BYTES) {
+    return { ok: false, error: 'Images must be 8 MB or smaller.' };
+  }
+  const allowed = isLogo ? LOGO_IMAGE_TYPES : CMS_IMAGE_TYPES;
+  const ext = allowed[file.type];
+  if (!ext) {
+    return { ok: false, error: 'Unsupported image type. Use JPEG, PNG, WebP or GIF.' };
+  }
+
   const path = `${field}/${Date.now()}.${ext}`;
   const { error: upErr } = await admin.storage
     .from('cms-assets')
@@ -542,7 +625,7 @@ export async function adminUploadCmsAsset(formData: FormData): Promise<{ ok: tru
   if (field === 'logo') updatePayload.logo_url = url;
   if (field === 'favicon') updatePayload.favicon_url = url;
   if (Object.keys(updatePayload).length > 0) {
-    await admin.from('site_settings').update(updatePayload).eq('id', 1);
+    await admin.from('site_settings').upsert({ id: 1, ...updatePayload });
   }
 
   revalidatePath('/admin/cms/site');

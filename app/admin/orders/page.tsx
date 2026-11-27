@@ -49,20 +49,20 @@ export default async function AdminOrdersPage({
       </form>
 
       {orders.length === 0 ? (
-        <p className="text-sm text-muted">No orders match.</p>
+        <p className="text-sm text-muted dark:text-dark-muted">No orders match.</p>
       ) : (
-        <div className="border border-line">
+        <div className="border border-line dark:border-dark-line">
           {orders.map((o) => (
             <Link
               key={o.id}
               href={`/admin/orders/${o.id}`}
-              className="flex flex-col md:flex-row md:items-center md:justify-between gap-1 px-4 py-3 border-b border-line last:border-0 text-sm"
+              className="flex flex-col md:flex-row md:items-center md:justify-between gap-1 px-4 py-3 border-b border-line dark:border-dark-line last:border-0 text-sm"
             >
               <span className="truncate">
                 {o.customer_name} · {o.email} · {o.city}
               </span>
               <span className="flex items-center gap-3">
-                <span className="text-muted">{new Date(o.created_at).toLocaleDateString()}</span>
+                <span className="text-muted dark:text-dark-muted">{new Date(o.created_at).toLocaleDateString()}</span>
                 <span>{formatPrice(o.total, currency)}</span>
                 <OrderStatusBadge status={o.status} />
               </span>

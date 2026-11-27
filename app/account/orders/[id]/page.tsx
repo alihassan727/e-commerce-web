@@ -4,6 +4,8 @@ import OrderStatusBadge from '@/components/order-status-badge';
 import TrackingTimeline from '@/components/tracking-timeline';
 import { getMyCustomer, getMyOrderDetail } from '@/lib/queries/account';
 import { getSiteSettings } from '@/lib/queries/catalog';
+import { getCustomerReviewedProductIds } from '@/lib/queries/reviews';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { formatPrice } from '@/lib/format';
 
 export default async function AccountOrderDetailPage({ params }: { params: { id: string } }) {
@@ -11,9 +13,32 @@ export default async function AccountOrderDetailPage({ params }: { params: { id:
   if (!customer) return null;
   const currency = settings?.currency ?? 'PKR';
 
-  const result = await getMyOrderDetail(params.id, customer.id);
+  const result = await getMyOrderDetail(params.id, customer.id, customer.email);
   if (!result) notFound();
   const { order, tracking } = result;
+
+  // Batch-load product slugs for item links & review eligibility when delivered.
+  const productIds = Array.from(
+    new Set(order.items.map((it) => it.product_id).filter(Boolean) as string[]),
+  );
+  const slugMap = new Map<string, string>();
+  let reviewedIds = new Set<string>();
+
+  if (productIds.length > 0) {
+    const admin = createAdminClient();
+    const [{ data: prodRows }, reviewed] = await Promise.all([
+      admin.from('products').select('id, slug').in('id', productIds),
+      order.status === 'delivered'
+        ? getCustomerReviewedProductIds(customer.id, productIds)
+        : Promise.resolve(new Set<string>()),
+    ]);
+    for (const p of prodRows ?? []) {
+      slugMap.set(p.id as string, p.slug as string);
+    }
+    reviewedIds = reviewed;
+  }
+
+  const isDelivered = order.status === 'delivered';
 
   return (
     <div>
@@ -33,16 +58,66 @@ export default async function AccountOrderDetailPage({ params }: { params: { id:
         {/* Items + totals */}
         <div>
           <h2 className="font-medium mb-3 text-ink dark:text-dark-ink">Items</h2>
-          <div className="border-y border-line dark:border-dark-line py-4 flex flex-col gap-2 mb-4">
-            {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span className="text-ink dark:text-dark-ink">
-                  {item.title_snapshot}
-                  {item.variant_label_snapshot ? ` (${item.variant_label_snapshot})` : ''} x{item.quantity}
-                </span>
-                <span className="text-ink dark:text-dark-ink">{formatPrice(item.line_total, currency)}</span>
-              </div>
-            ))}
+          <div className="border-y border-line dark:border-dark-line py-4 flex flex-col gap-4 mb-4">
+            {order.items.map((item) => {
+              const slug = item.product_id ? slugMap.get(item.product_id) : undefined;
+              const alreadyReviewed = item.product_id ? reviewedIds.has(item.product_id) : false;
+              const variantText = (item.color_snapshot || item.size_snapshot)
+                ? [item.color_snapshot, item.size_snapshot].filter(Boolean).join(' / ')
+                : item.variant_label_snapshot;
+
+              return (
+                <div key={item.id} className="flex justify-between gap-3 text-sm">
+                  <div className="flex items-start gap-3">
+                    {item.image_snapshot_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.image_snapshot_url}
+                        alt={item.title_snapshot}
+                        className="w-12 h-16 object-cover rounded border border-line dark:border-dark-line shrink-0"
+                        loading="lazy"
+                      />
+                    ) : null}
+                    <div>
+                      {slug ? (
+                        <Link href={`/product/${slug}`} className="font-medium text-ink dark:text-dark-ink hover:underline">
+                          {item.title_snapshot}
+                        </Link>
+                      ) : (
+                        <span className="font-medium text-ink dark:text-dark-ink">{item.title_snapshot}</span>
+                      )}
+                      {variantText && (
+                        <p className="text-xs text-muted dark:text-dark-muted mt-0.5">{variantText}</p>
+                      )}
+                      <p className="text-xs text-muted dark:text-dark-muted mt-0.5">Qty: {item.quantity}</p>
+
+                      {isDelivered && item.product_id && slug && (
+                        <div className="mt-2">
+                          {alreadyReviewed ? (
+                            <Link
+                              href={`/product/${slug}#reviews`}
+                              className="inline-flex items-center gap-1.5 text-xs theme-text hover:underline"
+                            >
+                              Reviewed · Edit review
+                            </Link>
+                          ) : (
+                            <Link
+                              href={`/product/${slug}#reviews`}
+                              className="btn btn-outline text-xs py-1 px-2.5"
+                            >
+                              Write a review
+                            </Link>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-ink dark:text-dark-ink whitespace-nowrap">
+                    {formatPrice(item.line_total, currency)}
+                  </span>
+                </div>
+              );
+            })}
           </div>
           <div className="flex flex-col gap-1 text-sm">
             <div className="flex justify-between">

@@ -1,5 +1,5 @@
 import type { Metadata } from 'next';
-import { Fraunces, IBM_Plex_Sans } from 'next/font/google';
+import { Fraunces, Inter } from 'next/font/google';
 import Navbar from '@/components/navbar';
 import Footer from '@/components/footer';
 import { CartProvider } from '@/lib/cart-context';
@@ -14,10 +14,10 @@ const fraunces = Fraunces({
   display: 'swap',
 });
 
-const ibmPlex = IBM_Plex_Sans({
+const inter = Inter({
   subsets: ['latin'],
   weight: ['400', '500', '600', '700'],
-  variable: '--font-ibm-plex',
+  variable: '--font-inter',
   display: 'swap',
 });
 
@@ -26,6 +26,7 @@ export async function generateMetadata(): Promise<Metadata> {
   return {
     title: settings?.seo_title || settings?.store_name || 'Atlas Clothier',
     description: settings?.meta_description || 'Seasonal clothing, made well and delivered to your door.',
+    icons: settings?.favicon_url ? { icon: settings.favicon_url } : undefined,
   };
 }
 
@@ -50,7 +51,7 @@ export default async function RootLayout({
     .join(';');
 
   return (
-    <html lang="en" className={`${fraunces.variable} ${ibmPlex.variable}`} suppressHydrationWarning>
+    <html lang="en" className={`${fraunces.variable} ${inter.variable}`} suppressHydrationWarning>
       <head>
         {/* Anti-flash dark-mode script */}
         <script

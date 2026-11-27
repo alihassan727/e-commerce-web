@@ -12,20 +12,57 @@ function slugify(s: string): string {
     .replace(/(^-|-$)/g, '');
 }
 
-function sanitizeExt(ext: string): string {
-  return /^[a-z0-9]+$/.test(ext) ? ext : 'jpg';
+const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+
+// Allowed product-image MIME types mapped to their storage extension. The
+// storage path and content type are derived from this allowlist rather than
+// from the client-supplied filename, so a crafted upload cannot land an
+// executable text/html (or SVG) file in the public bucket.
+const PRODUCT_IMAGE_TYPES: Record<string, string> = {
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/webp': 'webp',
+  'image/gif': 'gif',
+  'image/avif': 'avif',
+};
+
+function imageUploadError(
+  file: File,
+  allowed: Record<string, string>,
+): string | null {
+  if (file.size === 0) return 'The selected file is empty.';
+  if (file.size > MAX_UPLOAD_BYTES) return 'Images must be 8 MB or smaller.';
+  if (!allowed[file.type]) {
+    return 'Unsupported image type. Use JPEG, PNG, WebP, GIF or AVIF.';
+  }
+  return null;
 }
 
 // ---------------------------------------------------------------------------
 // Products
 // ---------------------------------------------------------------------------
 
-export interface ProductVariantInput {
+export interface ProductSizeInput {
   id?: string;
-  size?: string;
-  color?: string;
+  size: string;
   stock: number;
   sku?: string;
+  is_active?: boolean;
+}
+
+export interface ProductColorInput {
+  /** Client-generated stable key used to map uploads back to the saved color. */
+  key: string;
+  /** Existing color id when editing. */
+  id?: string;
+  name: string;
+  color_hex?: string;
+  title?: string;
+  sku?: string;
+  regular_price: number;
+  sale_price?: number | null;
+  is_active?: boolean;
+  sizes: ProductSizeInput[];
 }
 
 export interface ProductInput {
@@ -39,12 +76,16 @@ export interface ProductInput {
   stock?: number | null;
   is_featured?: boolean;
   is_active?: boolean;
-  variants?: ProductVariantInput[];
+  colors?: ProductColorInput[];
 }
 
 export type ProductSaveResult =
-  | { ok: true; id: string }
-  | { ok: false; error: string };
+  | { ok: true; id: string; colorIds: Record<string, string> }
+  | { ok: false; error: string; id?: string };
+
+function normalizeName(s: string): string {
+  return s.trim().toLowerCase();
+}
 
 export async function saveProduct(
   input: ProductInput,
@@ -79,9 +120,27 @@ export async function saveProduct(
 
   let productId: string;
   if (input.id) {
-    const { error } = await admin.from('products').update(payload).eq('id', input.id);
-    if (error) return { ok: false, error: error.message };
-    productId = input.id;
+    // Update first; if the row does not exist yet (first create with a
+    // client-generated id), insert with that same id so retries are idempotent.
+    const { data: updated, error } = await admin
+      .from('products')
+      .update(payload)
+      .eq('id', input.id)
+      .select('id');
+    if (error) return { ok: false, error: error.message, id: input.id };
+    if (updated && updated.length > 0) {
+      productId = input.id;
+    } else {
+      const { data, error: insErr } = await admin
+        .from('products')
+        .insert({ ...payload, id: input.id })
+        .select('id')
+        .single();
+      if (insErr || !data) {
+        return { ok: false, error: insErr?.message ?? 'Could not create product.' };
+      }
+      productId = data.id;
+    }
   } else {
     const { data, error } = await admin
       .from('products')
@@ -92,42 +151,204 @@ export async function saveProduct(
     productId = data.id;
   }
 
-  // Reconcile variants: update existing, insert new, delete removed.
-  if (input.has_variants) {
-    const incoming = input.variants ?? [];
-    const { data: existing } = await admin
+  const colorIds: Record<string, string> = {};
+
+  if (!input.has_variants) {
+    // Soft-delete: deactivate colors and size variants instead of deleting rows.
+    // This preserves ids, stock, SKUs, FK references and historical orders, and
+    // avoids any race with confirm_order / new order creation.
+    await admin
       .from('variants')
-      .select('id')
+      .update({ is_active: false })
       .eq('product_id', productId);
-    const existingIds = (existing ?? []).map((v) => v.id);
-    const incomingIds = incoming.map((v) => v.id).filter(Boolean) as string[];
-    const toDelete = existingIds.filter((id) => !incomingIds.includes(id));
-    if (toDelete.length) {
-      await admin.from('variants').delete().in('id', toDelete);
-    }
-    for (const v of incoming) {
-      const row = {
-        product_id: productId,
-        size: v.size?.trim() || null,
-        color: v.color?.trim() || null,
-        stock: Math.max(0, Math.floor(Number(v.stock ?? 0))),
-        sku: v.sku?.trim() || null,
+    await admin
+      .from('product_colors')
+      .update({ is_active: false })
+      .eq('product_id', productId);
+  } else {
+    const incoming = input.colors ?? [];
+
+    if (incoming.length === 0) {
+      return {
+        ok: false,
+        error: 'Add at least one color for a product with variants.',
+        id: productId,
       };
-      if (v.id) {
-        await admin.from('variants').update(row).eq('id', v.id);
-      } else {
-        await admin.from('variants').insert(row);
+    }
+
+    // Validate colors before touching the DB.
+    const seenNames = new Set<string>();
+    for (const c of incoming) {
+      const name = c.name?.trim();
+      if (!name) return { ok: false, error: 'Every color needs a name.' };
+      const key = normalizeName(name);
+      if (seenNames.has(key)) {
+        return { ok: false, error: `Duplicate color name: ${name}.` };
+      }
+      seenNames.add(key);
+      const regular = Number(c.regular_price);
+      if (!Number.isFinite(regular) || regular < 0) {
+        return { ok: false, error: `Regular price for ${name} must be 0 or more.` };
+      }
+      if (c.sale_price != null && Number(c.sale_price) > 0) {
+        if (Number(c.sale_price) >= regular) {
+          return {
+            ok: false,
+            error: `Sale price for ${name} must be lower than the regular price.`,
+          };
+        }
       }
     }
-  } else {
-    // No variants: clear any existing variant rows.
-    await admin.from('variants').delete().eq('product_id', productId);
+
+    // Reconcile colors idempotently: match incoming colors to existing rows by
+    // id first, then by normalized name, so a retry never creates duplicates.
+    const { data: existingColors } = await admin
+      .from('product_colors')
+      .select('id,name')
+      .eq('product_id', productId);
+    const existingColorRows = (existingColors ?? []) as { id: string; name: string }[];
+
+    const resolvedColors = incoming.map((c) => {
+      const name = c.name.trim();
+      let targetId = c.id;
+      if (!targetId) {
+        const match = existingColorRows.find(
+          (ec) => normalizeName(ec.name) === normalizeName(name),
+        );
+        if (match) targetId = match.id;
+      }
+      return { c, name, targetId };
+    });
+
+    const incomingColorIds = resolvedColors
+      .map((r) => r.targetId)
+      .filter(Boolean) as string[];
+    const removedColorIds = existingColorRows
+      .map((ec) => ec.id)
+      .filter((id) => !incomingColorIds.includes(id));
+    if (removedColorIds.length) {
+      // Soft-delete: deactivate the color and its size variants. Rows, stock,
+      // SKUs, images and historical order references are all preserved.
+      await admin
+        .from('variants')
+        .update({ is_active: false })
+        .in('color_id', removedColorIds);
+      await admin
+        .from('product_colors')
+        .update({ is_active: false })
+        .in('id', removedColorIds);
+    }
+
+    for (const [colorIndex, r] of resolvedColors.entries()) {
+      const c = r.c;
+      const name = r.name;
+      const row = {
+        product_id: productId,
+        name,
+        color_hex: c.color_hex?.trim() || null,
+        title: c.title?.trim() || null,
+        sku: c.sku?.trim() || null,
+        regular_price: Math.max(0, Number(c.regular_price) || 0),
+        sale_price:
+          c.sale_price != null && Number(c.sale_price) > 0
+            ? Number(c.sale_price)
+            : null,
+        is_active: c.is_active ?? true,
+        sort_order: colorIndex,
+      };
+
+      let colorId: string;
+      if (r.targetId) {
+        const { error } = await admin
+          .from('product_colors')
+          .update(row)
+          .eq('id', r.targetId)
+          .eq('product_id', productId);
+        if (error) return { ok: false, error: error.message, id: productId };
+        colorId = r.targetId;
+      } else {
+        const { data, error } = await admin
+          .from('product_colors')
+          .insert(row)
+          .select('id')
+          .single();
+        if (error || !data) {
+          return {
+            ok: false,
+            error: error?.message ?? `Could not save color ${name}.`,
+            id: productId,
+          };
+        }
+        colorId = data.id;
+      }
+      colorIds[c.key] = colorId;
+
+      // Reconcile size-level variants for this color.
+      const sizes = c.sizes ?? [];
+      const { data: existingVariants } = await admin
+        .from('variants')
+        .select('id,size')
+        .eq('color_id', colorId);
+      const existingVariantRows = (existingVariants ?? []) as {
+        id: string;
+        size: string | null;
+      }[];
+
+      // Match incoming sizes to existing rows by id, then by size name, so a
+      // retry updates the same variant instead of inserting a duplicate.
+      const resolvedSizes = sizes.map((s) => {
+        let vid = s.id;
+        if (!vid) {
+          const match = existingVariantRows.find(
+            (ev) => normalizeName(ev.size ?? '') === normalizeName(s.size ?? ''),
+          );
+          if (match) vid = match.id;
+        }
+        return { s, vid };
+      });
+
+      const keepIds = resolvedSizes
+        .map((x) => x.vid)
+        .filter(Boolean) as string[];
+      const toDeleteVariants = existingVariantRows
+        .map((ev) => ev.id)
+        .filter((id) => !keepIds.includes(id));
+      if (toDeleteVariants.length) {
+        // Soft-delete removed sizes: deactivate, never delete the row.
+        await admin
+          .from('variants')
+          .update({ is_active: false })
+          .in('id', toDeleteVariants);
+      }
+      for (const { s, vid } of resolvedSizes) {
+        const sizeName = s.size?.trim() || null;
+        const vrow = {
+          product_id: productId,
+          color_id: colorId,
+          size: sizeName,
+          color: name,
+          color_hex: row.color_hex,
+          stock: Math.max(0, Math.floor(Number(s.stock ?? 0))),
+          sku: s.sku?.trim() || null,
+          is_active: s.is_active ?? row.is_active,
+        };
+        if (vid) {
+          await admin.from('variants').update(vrow).eq('id', vid);
+        } else {
+          await admin.from('variants').insert(vrow);
+        }
+      }
+    }
   }
 
   revalidatePath(`/admin/products/${productId}`);
   revalidatePath('/admin/products');
   revalidatePath('/');
-  return { ok: true, id: productId };
+  revalidatePath('/shop');
+  revalidatePath('/category');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
+  return { ok: true, id: productId, colorIds };
 }
 
 export type DeleteResult = { ok: true } | { ok: false; error: string };
@@ -146,16 +367,36 @@ export async function deleteProduct(id: string): Promise<DeleteResult> {
       .remove(images.map((i) => i.storage_path));
   }
 
+  // Remove per-color image files before the rows cascade away.
+  const { data: colorImages } = await admin
+    .from('color_images')
+    .select('storage_path, product_colors!inner(product_id)')
+    .eq('product_colors.product_id', id);
+  if (colorImages && colorImages.length) {
+    await admin.storage
+      .from('product-images')
+      .remove(colorImages.map((i) => i.storage_path));
+  }
+
   const { error } = await admin.from('products').delete().eq('id', id);
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/admin/products');
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true };
 }
 
+export interface UploadedImageRow {
+  id: string;
+  storage_path: string;
+  sort_order: number;
+}
+
 export type ImageUploadResult =
-  | { ok: true; path: string }
+  | { ok: true; path: string; image: UploadedImageRow }
   | { ok: false; error: string };
 
 export async function uploadProductImage(
@@ -170,31 +411,35 @@ export async function uploadProductImage(
     return { ok: false, error: 'Missing file or product.' };
   }
 
+  const validationError = imageUploadError(file, PRODUCT_IMAGE_TYPES);
+  if (validationError) return { ok: false, error: validationError };
+
   const { count } = await admin
     .from('product_images')
     .select('id', { count: 'exact', head: true })
     .eq('product_id', productId);
   const sortOrder = (count ?? 0) + 1;
 
-  const rawExt = file.name.split('.').pop()?.toLowerCase() ?? '';
-  const ext = sanitizeExt(rawExt);
+  const ext = PRODUCT_IMAGE_TYPES[file.type];
   const path = `${productId}/${Date.now()}-${sortOrder}.${ext}`;
 
   const { error: upErr } = await admin.storage
     .from('product-images')
-    .upload(path, file, { contentType: file.type || 'image/*', upsert: false });
+    .upload(path, file, { contentType: file.type, upsert: false });
   if (upErr) return { ok: false, error: upErr.message };
 
-  const { error: insertErr } = await admin
+  const { data: inserted, error: insertErr } = await admin
     .from('product_images')
-    .insert({ product_id: productId, storage_path: path, sort_order: sortOrder });
-  if (insertErr) {
+    .insert({ product_id: productId, storage_path: path, sort_order: sortOrder })
+    .select('id,storage_path,sort_order')
+    .single();
+  if (insertErr || !inserted) {
     await admin.storage.from('product-images').remove([path]);
-    return { ok: false, error: insertErr.message };
+    return { ok: false, error: insertErr?.message ?? 'Could not save the image.' };
   }
 
   revalidatePath(`/admin/products/${productId}`);
-  return { ok: true, path };
+  return { ok: true, path, image: inserted as UploadedImageRow };
 }
 
 export async function removeProductImage(id: string): Promise<DeleteResult> {
@@ -213,6 +458,83 @@ export async function removeProductImage(id: string): Promise<DeleteResult> {
   await admin.from('product_images').delete().eq('id', id);
 
   if (productId) revalidatePath(`/admin/products/${productId}`);
+  return { ok: true };
+}
+
+/**
+ * Uploads an image into a specific color's gallery. Uses the same
+ * `product-images` bucket and path conventions as product-level uploads:
+ *   <productId>/<colorId>/<timestamp>-<sortOrder>.<ext>
+ */
+export async function uploadColorImage(
+  formData: FormData,
+): Promise<ImageUploadResult> {
+  await requireAdmin();
+  const admin = createAdminClient();
+
+  const file = formData.get('file');
+  const colorId = String(formData.get('color_id') ?? '');
+  if (!(file instanceof File) || !colorId) {
+    return { ok: false, error: 'Missing file or color.' };
+  }
+
+  const validationError = imageUploadError(file, PRODUCT_IMAGE_TYPES);
+  if (validationError) return { ok: false, error: validationError };
+
+  const { data: color } = await admin
+    .from('product_colors')
+    .select('id,product_id')
+    .eq('id', colorId)
+    .maybeSingle();
+  if (!color) return { ok: false, error: 'Color not found.' };
+
+  const { count } = await admin
+    .from('color_images')
+    .select('id', { count: 'exact', head: true })
+    .eq('color_id', colorId);
+  const sortOrder = (count ?? 0) + 1;
+
+  const ext = PRODUCT_IMAGE_TYPES[file.type];
+  const path = `${color.product_id}/${colorId}/${Date.now()}-${sortOrder}.${ext}`;
+
+  const { error: upErr } = await admin.storage
+    .from('product-images')
+    .upload(path, file, { contentType: file.type, upsert: false });
+  if (upErr) return { ok: false, error: upErr.message };
+
+  const { data: inserted, error: insertErr } = await admin
+    .from('color_images')
+    .insert({ color_id: colorId, storage_path: path, sort_order: sortOrder })
+    .select('id,storage_path,sort_order')
+    .single();
+  if (insertErr || !inserted) {
+    await admin.storage.from('product-images').remove([path]);
+    return { ok: false, error: insertErr?.message ?? 'Could not save the image.' };
+  }
+
+  revalidatePath(`/admin/products/${color.product_id}`);
+  revalidatePath('/product/[slug]', 'page');
+  return { ok: true, path, image: inserted as UploadedImageRow };
+}
+
+export async function removeColorImage(id: string): Promise<DeleteResult> {
+  await requireAdmin();
+  const admin = createAdminClient();
+
+  const { data } = await admin
+    .from('color_images')
+    .select('storage_path, product_colors!inner(product_id)')
+    .eq('id', id)
+    .maybeSingle();
+  if (data?.storage_path) {
+    await admin.storage.from('product-images').remove([data.storage_path]);
+  }
+  const productId = (data as { product_colors?: { product_id: string } } | null)
+    ?.product_colors?.product_id;
+  await admin.from('color_images').delete().eq('id', id);
+
+  if (productId) revalidatePath(`/admin/products/${productId}`);
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true };
 }
 
@@ -271,6 +593,10 @@ export async function saveCategory(
 
   revalidatePath('/admin/categories');
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true, id };
 }
 
@@ -281,6 +607,10 @@ export async function deleteCategory(id: string): Promise<DeleteResult> {
   if (error) return { ok: false, error: error.message };
   revalidatePath('/admin/categories');
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true };
 }
 
@@ -303,13 +633,23 @@ export async function moveCategory(
   const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= list.length) return { ok: true };
 
-  const a = list[idx];
-  const b = list[swapIdx];
-  await admin.from('categories').update({ sort_order: b.sort_order }).eq('id', a.id);
-  await admin.from('categories').update({ sort_order: a.sort_order }).eq('id', b.id);
+  // Reindex the whole (already ordered) list after the swap. Swapping only the
+  // two stored sort_order values is a no-op when categories share a value
+  // (e.g. several newly created rows default to 0).
+  const ordered = list.slice();
+  const [moved] = ordered.splice(idx, 1);
+  ordered.splice(swapIdx, 0, moved);
+  await Promise.all(
+    ordered.map((row, index) =>
+      admin.from('categories').update({ sort_order: index }).eq('id', row.id),
+    ),
+  );
 
   revalidatePath('/admin/categories');
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category');
+  revalidatePath('/category/[slug]', 'page');
   return { ok: true };
 }
 
@@ -368,6 +708,9 @@ export async function updateOrderStatus(
   revalidatePath('/admin/orders');
   revalidatePath('/admin');
   revalidatePath(`/order/${id}`);
+  revalidatePath('/account/orders');
+  revalidatePath(`/account/orders/${id}`);
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true };
 }
 
@@ -391,10 +734,11 @@ export async function saveHomepageSection(
   await requireAdmin();
   const admin = createAdminClient();
 
+  const isCategoryBoxes = input.type === 'category' && input.config?.kind === 'category_boxes';
   if (!['hero', 'category', 'featured'].includes(input.type)) {
     return { ok: false, error: 'Invalid section type.' };
   }
-  if (input.type === 'category' && !input.category_id) {
+  if (input.type === 'category' && !isCategoryBoxes && !input.category_id) {
     return { ok: false, error: 'Pick a category for a category section.' };
   }
 
@@ -408,7 +752,7 @@ export async function saveHomepageSection(
 
   const payload = {
     type: input.type,
-    category_id: input.type === 'category' ? input.category_id : null,
+    category_id: input.type === 'category' && !isCategoryBoxes ? input.category_id : null,
     title: input.title?.trim() || null,
     config: input.config ?? {},
     is_active: input.is_active ?? true,
@@ -463,10 +807,16 @@ export async function moveHomepageSection(
   const swapIdx = direction === 'up' ? idx - 1 : idx + 1;
   if (swapIdx < 0 || swapIdx >= list.length) return { ok: true };
 
-  const a = list[idx];
-  const b = list[swapIdx];
-  await admin.from('homepage_sections').update({ sort_order: b.sort_order }).eq('id', a.id);
-  await admin.from('homepage_sections').update({ sort_order: a.sort_order }).eq('id', b.id);
+  // Reindex the whole list after the move so sections with duplicate
+  // sort_order values still reorder deterministically.
+  const ordered = list.slice();
+  const [moved] = ordered.splice(idx, 1);
+  ordered.splice(swapIdx, 0, moved);
+  await Promise.all(
+    ordered.map((row, index) =>
+      admin.from('homepage_sections').update({ sort_order: index }).eq('id', row.id),
+    ),
+  );
 
   revalidatePath('/admin/homepage');
   revalidatePath('/');
@@ -499,10 +849,12 @@ export async function saveButtonColor(color: string): Promise<DeleteResult> {
   const admin = createAdminClient();
   const { error } = await admin
     .from('site_settings')
-    .update({ button_color: color.trim().toUpperCase() })
-    .eq('id', 1);
+    .upsert({ id: 1, button_color: color.trim().toUpperCase() });
   if (error) return { ok: false, error: error.message };
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
   revalidatePath('/admin/settings');
   revalidatePath('/admin/cms/site');
   return { ok: true };
@@ -517,6 +869,13 @@ const GATEWAY_FIELD_ALLOWLISTS: Record<string, string[]> = {
   payfast: ['environment', 'merchant_id', 'secured_key'],
 };
 
+// Secret fields are never sent to the browser. A blank value means "keep the
+// saved secret", and the merge below happens entirely on the server.
+const GATEWAY_SECRET_FIELDS: Record<string, string[]> = {
+  safepay: ['secret_key', 'webhook_secret'],
+  payfast: ['secured_key'],
+};
+
 export async function savePaymentGateway(
   gateway: string,
   credentials: Record<string, string>,
@@ -525,13 +884,29 @@ export async function savePaymentGateway(
 
   const allowed = GATEWAY_FIELD_ALLOWLISTS[gateway];
   if (!allowed) return { ok: false, error: 'Unknown gateway.' };
+  const secretFields = new Set(GATEWAY_SECRET_FIELDS[gateway] ?? []);
+
+  const admin = createAdminClient();
+  const { data: existingRow } = await admin
+    .from('payment_gateway_config')
+    .select('credentials')
+    .eq('gateway', gateway)
+    .maybeSingle();
+  const current = (existingRow?.credentials ?? {}) as Record<string, string>;
 
   // Strip any fields not in the allowlist to prevent storing arbitrary data.
+  // Secrets left blank keep their saved value (the edit form never receives it).
   const sanitized: Record<string, string> = {};
   for (const key of allowed) {
-    if (credentials[key] !== undefined) {
-      sanitized[key] = String(credentials[key]).trim();
+    const incoming = credentials[key];
+    const value = incoming === undefined ? undefined : String(incoming).trim();
+
+    if (secretFields.has(key)) {
+      if (value) sanitized[key] = value;
+      else if (current[key]) sanitized[key] = current[key];
+      continue;
     }
+    if (value !== undefined) sanitized[key] = value;
   }
 
   // Validate environment field if present.
@@ -539,11 +914,9 @@ export async function savePaymentGateway(
     return { ok: false, error: 'Environment must be sandbox or live.' };
   }
 
-  const admin = createAdminClient();
   const { error } = await admin
     .from('payment_gateway_config')
-    .update({ credentials: sanitized })
-    .eq('gateway', gateway);
+    .upsert({ gateway, credentials: sanitized }, { onConflict: 'gateway' });
   if (error) return { ok: false, error: error.message };
 
   revalidatePath('/admin/payments');
@@ -584,5 +957,8 @@ export async function saveSettings(
 
   revalidatePath('/admin/settings');
   revalidatePath('/');
+  revalidatePath('/shop');
+  revalidatePath('/category/[slug]', 'page');
+  revalidatePath('/product/[slug]', 'page');
   return { ok: true };
 }

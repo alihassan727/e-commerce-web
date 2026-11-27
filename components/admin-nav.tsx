@@ -18,6 +18,7 @@ const SECTIONS = [
     group: 'Support',
     links: [
       { href: '/admin/tickets', label: 'Tickets', exact: false },
+      { href: '/admin/reviews', label: 'Reviews', exact: false },
     ],
   },
   {

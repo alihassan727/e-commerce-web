@@ -30,7 +30,7 @@ export const getSiteSettings = cache(async (): Promise<SiteSettings | null> => {
   return data as SiteSettings | null;
 });
 
-export async function getActiveCategories(): Promise<Category[]> {
+export const getActiveCategories = cache(async (): Promise<Category[]> => {
   const supabase = createClient();
   const { data } = await supabase
     .from('categories')
@@ -39,9 +39,9 @@ export async function getActiveCategories(): Promise<Category[]> {
     .order('sort_order', { ascending: true })
     .order('name', { ascending: true });
   return (data ?? []) as Category[];
-}
+});
 
-export async function getHomepageSections(): Promise<HomepageSection[]> {
+export const getHomepageSections = cache(async (): Promise<HomepageSection[]> => {
   const supabase = createClient();
   const { data } = await supabase
     .from('homepage_sections')
@@ -49,7 +49,43 @@ export async function getHomepageSections(): Promise<HomepageSection[]> {
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   return (data ?? []) as HomepageSection[];
-}
+});
+
+/**
+ * Returns one representative product-images storage path per category_id
+ * in a single query, for category cards that do not have a custom image.
+ */
+export const getCategoryCoverImages = cache(
+  async (categoryIds: string[]): Promise<Record<string, string>> => {
+    if (categoryIds.length === 0) return {};
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('products')
+      .select('category_id, images:product_images(storage_path, sort_order), colors:product_colors(is_active, sort_order, images:color_images(storage_path, sort_order))')
+      .eq('is_active', true)
+      .in('category_id', categoryIds)
+      .order('created_at', { ascending: false });
+
+    const map: Record<string, string> = {};
+    for (const row of (data ?? []) as unknown as {
+      category_id: string | null;
+      images: { storage_path: string; sort_order: number }[];
+      colors: { is_active: boolean; sort_order: number; images: { storage_path: string; sort_order: number }[] }[];
+    }[]) {
+      if (!row.category_id || map[row.category_id]) continue;
+      const activeColor = [...(row.colors ?? [])]
+        .filter((c) => c.is_active)
+        .sort((a, b) => a.sort_order - b.sort_order)[0];
+      const colorImg = activeColor
+        ? [...(activeColor.images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0]?.storage_path
+        : null;
+      const prodImg = [...(row.images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0]?.storage_path;
+      const chosen = colorImg ?? prodImg;
+      if (chosen) map[row.category_id] = chosen;
+    }
+    return map;
+  },
+);
 
 export async function getProductsByCategory(
   categoryId: string,
@@ -57,7 +93,7 @@ export async function getProductsByCategory(
   const supabase = createClient();
   const { data } = await supabase
     .from('products')
-    .select('*, images:product_images(*)')
+    .select('*, images:product_images(*), colors:product_colors(*, images:color_images(*))')
     .eq('is_active', true)
     .eq('category_id', categoryId)
     .order('created_at', { ascending: false });
@@ -68,7 +104,7 @@ export async function getAllProducts(): Promise<ProductListItem[]> {
   const supabase = createClient();
   const { data } = await supabase
     .from('products')
-    .select('*, images:product_images(*)')
+    .select('*, images:product_images(*), colors:product_colors(*, images:color_images(*))')
     .eq('is_active', true)
     .order('created_at', { ascending: false });
   return (data ?? []) as unknown as ProductListItem[];
@@ -81,24 +117,31 @@ export async function getProductsByIds(
   const supabase = createClient();
   const { data } = await supabase
     .from('products')
-    .select('*, images:product_images(*)')
+    .select('*, images:product_images(*), colors:product_colors(*, images:color_images(*))')
     .eq('is_active', true)
     .in('id', ids);
-  return (data ?? []) as unknown as ProductListItem[];
+
+  // Preserve the order the admin picked for a featured section.
+  const position = new Map(ids.map((id, index) => [id, index]));
+  return ((data ?? []) as unknown as ProductListItem[]).sort(
+    (a, b) => (position.get(a.id) ?? 0) - (position.get(b.id) ?? 0),
+  );
 }
 
-export async function getProductBySlug(
-  slug: string,
-): Promise<ProductDetail | null> {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from('products')
-    .select('*, category:categories(*), images:product_images(*), variants:variants(*)')
-    .eq('slug', slug)
-    .eq('is_active', true)
-    .maybeSingle();
-  return data as unknown as ProductDetail | null;
-}
+export const getProductBySlug = cache(
+  async (slug: string): Promise<ProductDetail | null> => {
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('products')
+      .select(
+        '*, category:categories(*), images:product_images(*), variants:variants(*), colors:product_colors(*, images:color_images(*))',
+      )
+      .eq('slug', slug)
+      .eq('is_active', true)
+      .maybeSingle();
+    return data as unknown as ProductDetail | null;
+  },
+);
 
 export async function getCategoryBySlug(
   slug: string,
@@ -117,7 +160,7 @@ export async function getCategoryBySlug(
 // CMS: public reads
 // ---------------------------------------------------------------------------
 
-export async function getActiveSocialLinks(): Promise<SocialLink[]> {
+export const getActiveSocialLinks = cache(async (): Promise<SocialLink[]> => {
   const supabase = createClient();
   const { data } = await supabase
     .from('social_links')
@@ -125,9 +168,9 @@ export async function getActiveSocialLinks(): Promise<SocialLink[]> {
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   return (data ?? []) as SocialLink[];
-}
+});
 
-export async function getActiveFeatures(): Promise<CmsFeature[]> {
+export const getActiveFeatures = cache(async (): Promise<CmsFeature[]> => {
   const supabase = createClient();
   const { data } = await supabase
     .from('cms_features')
@@ -135,7 +178,7 @@ export async function getActiveFeatures(): Promise<CmsFeature[]> {
     .eq('is_active', true)
     .order('sort_order', { ascending: true });
   return (data ?? []) as CmsFeature[];
-}
+});
 
 export async function getPublishedPage(slug: string): Promise<CmsPage | null> {
   const supabase = createClient();
@@ -159,7 +202,7 @@ export async function adminGetAllPages(): Promise<CmsPage[]> {
 }
 
 /** Returns only published pages (used by footer — avoids fetching drafts). */
-export async function getPublishedPages(): Promise<CmsPage[]> {
+export const getPublishedPages = cache(async (): Promise<CmsPage[]> => {
   const admin = createAdminClient();
   const { data } = await admin
     .from('cms_pages')
@@ -167,7 +210,7 @@ export async function getPublishedPages(): Promise<CmsPage[]> {
     .eq('is_published', true)
     .order('slug', { ascending: true });
   return (data ?? []) as CmsPage[];
-}
+});
 
 export async function adminGetPage(slug: string): Promise<CmsPage | null> {
   const admin = createAdminClient();

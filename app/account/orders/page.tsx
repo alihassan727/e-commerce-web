@@ -9,7 +9,7 @@ export default async function AccountOrdersPage() {
   const [customer, settings] = await Promise.all([getMyCustomer(), getSiteSettings()]);
   if (!customer) return null;
   const currency = settings?.currency ?? 'PKR';
-  const orders = await getMyOrders(customer.id);
+  const orders = await getMyOrders(customer.id, customer.email);
 
   return (
     <div>

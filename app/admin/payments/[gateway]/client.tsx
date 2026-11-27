@@ -15,22 +15,27 @@ export default function GatewayConfigForm({
   gateway,
   label,
   fields,
-  existingCredentials,
+  values: initialValues,
+  savedSecretFields,
 }: {
   gateway: string;
   label: string;
   fields: Field[];
-  existingCredentials: Record<string, string>;
+  /** Non-secret values only; secret values never reach the browser. */
+  values: Record<string, string>;
+  savedSecretFields: string[];
 }) {
   const router = useRouter();
   const [values, setValues] = useState<Record<string, string>>(() => {
     const init: Record<string, string> = {};
     for (const f of fields) {
-      // Secret fields: show empty on load (do not pre-fill masked secrets from DB into UI)
-      init[f.key] = f.type === 'secret' ? '' : (existingCredentials[f.key] ?? '');
+      // Secret fields always start blank; a saved secret stays untouched
+      // unless the admin types a replacement.
+      init[f.key] = f.type === 'secret' ? '' : (initialValues[f.key] ?? '');
     }
     return init;
   });
+  const hasSavedSecret = (key: string) => savedSecretFields.includes(key);
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
@@ -48,18 +53,13 @@ export default function GatewayConfigForm({
     setErr(null);
     setMsg(null);
 
-    // Build payload: for secret fields that are empty (user left blank),
-    // carry forward the existing saved value so we don't wipe it.
+    // Blank secret fields are omitted entirely; the server action keeps the
+    // saved value. That way secrets never have to be sent to the browser.
     const payload: Record<string, string> = {};
     for (const f of fields) {
-      if (f.type === 'secret' && values[f.key] === '') {
-        // Keep existing credential if user left the field blank.
-        if (existingCredentials[f.key]) {
-          payload[f.key] = existingCredentials[f.key];
-        }
-      } else {
-        payload[f.key] = values[f.key];
-      }
+      const value = values[f.key] ?? '';
+      if (f.type === 'secret' && value === '') continue;
+      payload[f.key] = value;
     }
 
     setSaving(true);
@@ -72,7 +72,7 @@ export default function GatewayConfigForm({
 
   const secretsSaved = fields
     .filter((f) => f.type === 'secret')
-    .some((f) => existingCredentials[f.key]);
+    .some((f) => hasSavedSecret(f.key));
 
   return (
     <div className="max-w-md flex flex-col gap-4">
@@ -106,7 +106,7 @@ export default function GatewayConfigForm({
                 className="input flex-1 font-mono"
                 value={values[f.key]}
                 onChange={(e) => set(f.key, e.target.value)}
-                placeholder={existingCredentials[f.key] ? '••••••• (saved)' : 'Enter value'}
+                placeholder={hasSavedSecret(f.key) ? '••••••• (saved)' : 'Enter value'}
                 autoComplete="off"
               />
               <button

@@ -33,7 +33,7 @@ export default function CategoryActions({ id }: { id: string }) {
       <button
         type="button"
         disabled={busy}
-        className="text-muted"
+        className="text-muted dark:text-dark-muted"
         onClick={async () => {
           if (!window.confirm('Delete this category?')) return;
           await run(() => deleteCategory(id));

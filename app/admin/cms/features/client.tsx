@@ -55,8 +55,8 @@ export default function FeaturesAdminClient({ initialFeatures }: { initialFeatur
           <h2 className="font-medium mb-3 text-ink dark:text-dark-ink">{editing.id ? 'Edit' : 'New'} feature</h2>
           <div className="flex flex-col gap-3">
             <div className="field">
-              <label>Icon (emoji or text)</label>
-              <input className="input" value={editing.icon ?? ''} onChange={(e) => setEditing({ ...editing, icon: e.target.value })} placeholder="🚚" />
+              <label>Tag / Label (optional)</label>
+              <input className="input" value={editing.icon ?? ''} onChange={(e) => setEditing({ ...editing, icon: e.target.value })} placeholder="e.g. Delivery" />
             </div>
             <div className="field">
               <label>Heading</label>

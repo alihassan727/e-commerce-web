@@ -76,7 +76,7 @@ export default function AdminTicketDetail({
             notes.map((n) => (
               <div key={n.id} className="border border-line dark:border-dark-line p-3 text-sm">
                 <p className="text-ink dark:text-dark-ink whitespace-pre-wrap">{n.note}</p>
-                <p className="text-xs text-muted dark:text-dark-muted mt-1">{n.created_by} · {new Date(n.created_at).toLocaleString()}</p>
+                <p className="text-xs text-muted dark:text-dark-muted mt-1">{n.created_by} · {new Date(n.created_at).toLocaleString('en-US')}</p>
               </div>
             ))
           )}

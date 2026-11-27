@@ -22,16 +22,16 @@ export default async function AdminDashboardPage() {
       <h1 className="font-serif text-3xl mb-8">Dashboard</h1>
 
       <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-10">
-        <div className="border border-line p-4">
-          <p className="text-sm text-muted">Revenue</p>
+        <div className="border border-line dark:border-dark-line p-4">
+          <p className="text-sm text-muted dark:text-dark-muted">Revenue</p>
           <p className="text-2xl mt-1">{formatPrice(data.revenue, currency)}</p>
         </div>
-        <div className="border border-line p-4">
-          <p className="text-sm text-muted">Orders</p>
+        <div className="border border-line dark:border-dark-line p-4">
+          <p className="text-sm text-muted dark:text-dark-muted">Orders</p>
           <p className="text-2xl mt-1">{totalOrders}</p>
         </div>
-        <div className="border border-line p-4">
-          <p className="text-sm text-muted">Low stock</p>
+        <div className="border border-line dark:border-dark-line p-4">
+          <p className="text-sm text-muted dark:text-dark-muted">Low stock</p>
           <p className="text-2xl mt-1">{data.lowStockVariants.length + data.lowStockProducts.length}</p>
         </div>
       </div>
@@ -39,7 +39,7 @@ export default async function AdminDashboardPage() {
       <section className="mb-10">
         <h2 className="font-serif text-xl mb-4">Orders by status</h2>
         {ORDER_STATUSES.map((status) => (
-          <div key={status} className="flex items-center justify-between border-b border-line py-2 text-sm">
+          <div key={status} className="flex items-center justify-between border-b border-line dark:border-dark-line py-2 text-sm">
             <span>{ORDER_STATUS_LABELS[status as OrderStatus]}</span>
             <span>{data.counts[status] ?? 0}</span>
           </div>
@@ -54,14 +54,14 @@ export default async function AdminDashboardPage() {
           </Link>
         </div>
         {data.recent.length === 0 ? (
-          <p className="text-sm text-muted">No orders yet.</p>
+          <p className="text-sm text-muted dark:text-dark-muted">No orders yet.</p>
         ) : (
-          <div className="border border-line">
+          <div className="border border-line dark:border-dark-line">
             {data.recent.map((o) => (
               <Link
                 key={o.id}
                 href={`/admin/orders/${o.id}`}
-                className="flex items-center justify-between px-4 py-3 border-b border-line last:border-0 text-sm"
+                className="flex items-center justify-between px-4 py-3 border-b border-line dark:border-dark-line last:border-0 text-sm"
               >
                 <span className="truncate">
                   {o.customer_name} · {o.city}
@@ -81,29 +81,29 @@ export default async function AdminDashboardPage() {
           Low stock (below {data.threshold})
         </h2>
         {data.lowStockProducts.length === 0 && data.lowStockVariants.length === 0 ? (
-          <p className="text-sm text-muted">Everything is well stocked.</p>
+          <p className="text-sm text-muted dark:text-dark-muted">Everything is well stocked.</p>
         ) : (
-          <div className="border border-line">
+          <div className="border border-line dark:border-dark-line">
             {data.lowStockProducts.map((p) => (
               <Link
                 key={p.id}
                 href={`/admin/products/${p.id}`}
-                className="flex items-center justify-between px-4 py-3 border-b border-line text-sm"
+                className="flex items-center justify-between px-4 py-3 border-b border-line dark:border-dark-line text-sm"
               >
                 <span>{p.title}</span>
-                <span className="text-muted">{p.stock} in stock</span>
+                <span className="text-muted dark:text-dark-muted">{p.stock} in stock</span>
               </Link>
             ))}
             {data.lowStockVariants.map((v) => (
               <Link
                 key={v.id}
                 href={`/admin/products/${v.product_id}`}
-                className="flex items-center justify-between px-4 py-3 border-b border-line text-sm"
+                className="flex items-center justify-between px-4 py-3 border-b border-line dark:border-dark-line text-sm"
               >
                 <span>
                   {v.product_title} ({[v.size, v.color].filter(Boolean).join(' / ') || 'variant'})
                 </span>
-                <span className="text-muted">{v.stock} in stock</span>
+                <span className="text-muted dark:text-dark-muted">{v.stock} in stock</span>
               </Link>
             ))}
           </div>

@@ -13,7 +13,8 @@ export default async function AccountDashboardPage() {
 
   const [stats, orders, addresses] = await Promise.all([
     getMyStats(customer.id),
-    getMyOrders(customer.id),
+    // Include guest orders placed with the same email, matching /account/orders.
+    getMyOrders(customer.id, customer.email),
     getMyAddresses(customer.id),
   ]);
 

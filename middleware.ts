@@ -44,7 +44,8 @@ export async function middleware(request: NextRequest) {
 
   if (path.startsWith('/admin')) {
     const adminEmail = process.env.ADMIN_EMAIL;
-    if (!user || !adminEmail || user.email !== adminEmail) {
+    const userEmail = user?.email?.trim().toLowerCase();
+    if (!user || !adminEmail || userEmail !== adminEmail.trim().toLowerCase()) {
       const url = request.nextUrl.clone();
       url.pathname = '/unauthorized';
       return NextResponse.rewrite(url);

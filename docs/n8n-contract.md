@@ -33,6 +33,8 @@ n8n nodes at the tables and columns below.
       "variant_id": "uuid or null",
       "title": "Heavyweight Hoodie",
       "variant_label": "M / Black",
+      "color": "Black",
+      "size": "M",
       "price": 4500,
       "quantity": 2
     }
@@ -48,6 +50,8 @@ Notes:
   in the `products` table). For those, read stock from `products.stock`.
 - For variant products, `variant_id` is set; read stock from `variants.stock`.
 - `price` is informational; the source of truth for stock is the `stock` column.
+- `color` and `size` are additive informational fields (empty string when not
+  applicable). Existing nodes that only read the original keys keep working.
 
 ## What n8n should do
 

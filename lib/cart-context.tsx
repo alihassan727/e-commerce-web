@@ -25,17 +25,43 @@ interface CartContextValue {
 }
 
 const CartContext = createContext<CartContextValue | null>(null);
-const STORAGE_KEY = 'atlas-cart-v1';
+const STORAGE_KEY = 'atlas-cart-v2';
 
 export function CartProvider({ children }: { children: ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [ready, setReady] = useState(false);
 
-  // Hydrate from localStorage on mount only.
+  // Hydrate from localStorage on mount only. If a v1 cart exists and no v2
+  // cart has been written yet, migrate it once (preserving items, no dupes).
   useEffect(() => {
     try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setItems(JSON.parse(raw) as CartItem[]);
+      const rawV2 = localStorage.getItem(STORAGE_KEY);
+      if (rawV2) {
+        setItems(JSON.parse(rawV2) as CartItem[]);
+      } else {
+        const rawV1 = localStorage.getItem('atlas-cart-v1');
+        if (rawV1) {
+          const old = JSON.parse(rawV1) as Array<Record<string, unknown>>;
+          const migrated: CartItem[] = old.map((o) => ({
+            product_id: String(o.product_id ?? ''),
+            color_id: null,
+            variant_id: (o.variant_id as string | null) ?? null,
+            title: String(o.title ?? ''),
+            slug: String(o.slug ?? ''),
+            color_name: null,
+            color_hex: null,
+            size: null,
+            variant_label: (o.variant_label as string | null) ?? null,
+            image_url: null,
+            price: Number(o.price ?? 0),
+            quantity: Number(o.quantity ?? 1),
+          }));
+          setItems(migrated);
+          // Write v2 and drop v1 so the migration cannot run twice.
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(migrated));
+          localStorage.removeItem('atlas-cart-v1');
+        }
+      }
     } catch {
       // ignore malformed storage
     }

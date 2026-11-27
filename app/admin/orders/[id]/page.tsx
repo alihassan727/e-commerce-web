@@ -38,11 +38,27 @@ export default async function AdminOrderDetailPage({ params }: { params: { id: s
           <h2 className="font-medium mb-3 text-ink dark:text-dark-ink">Items</h2>
           <div className="flex flex-col gap-2 border-y border-line dark:border-dark-line py-4">
             {order.items.map((item) => (
-              <div key={item.id} className="flex justify-between text-sm">
-                <span className="text-ink dark:text-dark-ink">
-                  {item.title_snapshot}
-                  {item.variant_label_snapshot ? ` (${item.variant_label_snapshot})` : ''} x{item.quantity}
-                </span>
+              <div key={item.id} className="flex justify-between gap-3 text-sm">
+                <div className="flex items-start gap-3">
+                  {item.image_snapshot_url ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={item.image_snapshot_url}
+                      alt={item.title_snapshot}
+                      className="w-12 h-16 object-cover border border-line dark:border-dark-line shrink-0"
+                      loading="lazy"
+                    />
+                  ) : null}
+                  <span className="text-ink dark:text-dark-ink">
+                    {item.title_snapshot}
+                    {(item.color_snapshot || item.size_snapshot) ? (
+                      ` (${[item.color_snapshot, item.size_snapshot].filter(Boolean).join(' / ')})`
+                    ) : item.variant_label_snapshot ? (
+                      ` (${item.variant_label_snapshot})`
+                    ) : null}{' '}
+                    x{item.quantity}
+                  </span>
+                </div>
                 <span>{formatPrice(item.line_total, currency)}</span>
               </div>
             ))}

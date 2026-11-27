@@ -69,7 +69,7 @@ export default function AdminTrackingForm({
               <div key={e.id} className="px-4 py-3 border-b border-line dark:border-dark-line last:border-0 text-sm">
                 <p className="font-medium text-ink dark:text-dark-ink">{e.status}</p>
                 {e.description && <p className="text-muted dark:text-dark-muted mt-0.5">{e.description}</p>}
-                <p className="text-xs text-muted dark:text-dark-muted mt-0.5">{new Date(e.created_at).toLocaleString()} · {e.created_by}</p>
+                <p className="text-xs text-muted dark:text-dark-muted mt-0.5">{new Date(e.created_at).toLocaleString('en-US')} · {e.created_by}</p>
               </div>
             ))}
           </div>

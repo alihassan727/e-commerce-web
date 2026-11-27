@@ -9,23 +9,23 @@ export default async function AdminCategoriesPage() {
     <div>
       <h1 className="font-serif text-3xl mb-6">Categories</h1>
 
-      <div className="border border-line p-4 mb-8">
+      <div className="border border-line dark:border-dark-line p-4 mb-8">
         <h2 className="font-medium mb-3">Add a category</h2>
         <CategoryForm category={null} />
       </div>
 
       {categories.length === 0 ? (
-        <p className="text-sm text-muted">No categories yet.</p>
+        <p className="text-sm text-muted dark:text-dark-muted">No categories yet.</p>
       ) : (
-        <div className="border border-line">
+        <div className="border border-line dark:border-dark-line">
           {categories.map((c) => (
             <div
               key={c.id}
-              className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-4 py-3 border-b border-line last:border-0 text-sm"
+              className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 px-4 py-3 border-b border-line dark:border-dark-line last:border-0 text-sm"
             >
               <div>
                 <p className="font-medium">{c.name}</p>
-                <p className="text-muted">
+                <p className="text-muted dark:text-dark-muted">
                   {c.slug} · order {c.sort_order} · {c.is_active ? 'active' : 'hidden'}
                 </p>
               </div>

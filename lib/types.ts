@@ -12,17 +12,47 @@ export interface Category {
 export interface ProductImage {
   id: string;
   product_id: string;
+  variant_id: string | null;    // null = product-level image; set = variant-specific
   storage_path: string;
   sort_order: number;
+}
+
+// Color-level image (migration 0009). Belongs to a product color, not a size.
+export interface ColorImage {
+  id: string;
+  color_id: string;
+  storage_path: string;
+  sort_order: number;
+}
+
+// Color-level variant entity (migration 0009). Owns pricing + gallery.
+export interface ProductColor {
+  id: string;
+  product_id: string;
+  name: string;
+  color_hex: string | null;
+  title: string | null;
+  sku: string | null;
+  regular_price: number;
+  sale_price: number | null;
+  is_active: boolean;
+  sort_order: number;
+  created_at: string;
+  images?: ColorImage[];
 }
 
 export interface Variant {
   id: string;
   product_id: string;
+  color_id: string | null;      // added in migration 0009
   size: string | null;
   color: string | null;
   stock: number;
   sku: string | null;
+  // Extended in migration 0008
+  sale_price: number | null;
+  color_hex: string | null;
+  is_active: boolean;
 }
 
 export interface Product {
@@ -41,15 +71,25 @@ export interface Product {
 
 export interface ProductListItem extends Product {
   images: ProductImage[];
+  colors: ProductColor[];
 }
 
 export interface ProductDetail extends Product {
   category: Category | null;
   images: ProductImage[];
   variants: Variant[];
+  colors: ProductColor[];
 }
 
 export type HomepageSectionType = 'hero' | 'category' | 'featured';
+
+export interface CategoryBoxItem {
+  category_id: string;
+  title?: string;
+  image_path?: string;
+  is_active: boolean;
+  sort_order: number;
+}
 
 export interface HomepageSection {
   id: string;
@@ -81,6 +121,14 @@ export interface SiteSettings {
   meta_description: string | null;
   // Theme (added in migration 0007)
   button_color: string;
+  // Logo branding (added in migration 0008)
+  logo_mode: 'image' | 'text';
+  logo_text: string | null;
+  logo_font: string;
+  logo_font_size: string;
+  logo_font_weight: string;
+  logo_color: string;
+  logo_letter_spacing: string;
 }
 
 export interface PaymentGatewayConfig {
@@ -106,6 +154,9 @@ export interface OrderItem {
   variant_id: string | null;
   title_snapshot: string;
   variant_label_snapshot: string | null;
+  color_snapshot: string | null;           // added in migration 0009
+  size_snapshot: string | null;          // added in migration 0008
+  image_snapshot_url: string | null;     // added in migration 0008
   price: number;
   quantity: number;
   line_total: number;
@@ -152,10 +203,15 @@ export interface Customer {
 // Cart line item shape (client side).
 export interface CartItem {
   product_id: string;
+  color_id: string | null;
   variant_id: string | null;
   title: string;
   slug: string;
+  color_name: string | null;
+  color_hex: string | null;
+  size: string | null;
   variant_label: string | null;
+  image_url: string | null;
   price: number;
   quantity: number;
 }
@@ -243,4 +299,24 @@ export interface CmsFeature {
   description: string | null;
   is_active: boolean;
   sort_order: number;
+}
+
+// Product reviews (added in migration 0008)
+export type ReviewStatus = 'pending' | 'approved' | 'hidden';
+
+export interface ProductReview {
+  id: string;
+  product_id: string;
+  customer_id: string | null;
+  order_id: string | null;
+  rating: number;
+  review_text: string | null;
+  status: ReviewStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductReviewWithCustomer extends ProductReview {
+  customer_name: string | null;
+  customer_email: string | null;
 }

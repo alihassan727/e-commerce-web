@@ -8,11 +8,11 @@ export default function OrderStatusBadge({ status }: { status: OrderStatus }) {
     status === 'delivered'
       ? 'theme-text'
       : status === 'out_of_stock' || status === 'cancelled'
-        ? 'text-muted'
-        : 'text-ink';
+        ? 'text-muted dark:text-dark-muted'
+        : 'text-ink dark:text-dark-ink';
 
   return (
-    <span className={`inline-block border border-line px-2 py-0.5 text-sm ${color}`}>
+    <span className={`inline-block border border-line dark:border-dark-line px-2 py-0.5 text-sm ${color}`}>
       {statusLabel(status)}
     </span>
   );

@@ -1,6 +1,7 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import { getMyCustomer, getMyTicket } from '@/lib/queries/account';
+import { isUuid } from '@/lib/search';
 
 const STATUS_LABEL: Record<string, string> = {
   open: 'Open',
@@ -24,8 +25,9 @@ export default async function TicketDetailPage({
   params: { id: string };
   searchParams: { submitted?: string };
 }) {
+  if (!isUuid(params.id)) notFound();
   const customer = await getMyCustomer();
-  if (!customer) return null;
+  if (!customer) redirect(`/login?next=/account/tickets/${params.id}`);
   const ticket = await getMyTicket(params.id, customer.id);
   if (!ticket) notFound();
 

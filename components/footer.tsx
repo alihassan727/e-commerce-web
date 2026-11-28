@@ -75,7 +75,7 @@ export default async function Footer() {
                 {publishedPages.map((p) => (
                   <Link
                     key={p.slug}
-                    href={`/pages/${p.slug}`}
+                    href={`/${p.slug}`}
                     className="text-muted dark:text-dark-muted hover:text-ink dark:hover:text-dark-ink"
                   >
                     {p.title}

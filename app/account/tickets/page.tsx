@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { getMyCustomer, getMyTickets } from '@/lib/queries/account';
 
 const STATUS_LABEL: Record<string, string> = {
@@ -10,7 +11,7 @@ const STATUS_LABEL: Record<string, string> = {
 
 export default async function TicketsPage() {
   const customer = await getMyCustomer();
-  if (!customer) return null;
+  if (!customer) redirect('/login?next=/account/tickets');
   const tickets = await getMyTickets(customer.id);
 
   return (

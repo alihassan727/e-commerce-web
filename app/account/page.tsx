@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import OrderStatusBadge from '@/components/order-status-badge';
 import { getCurrentUser } from '@/lib/admin';
 import { getMyCustomer, getMyStats, getMyOrders, getMyAddresses } from '@/lib/queries/account';
@@ -9,7 +10,9 @@ export default async function AccountDashboardPage() {
   const [user, settings] = await Promise.all([getCurrentUser(), getSiteSettings()]);
   const currency = settings?.currency ?? 'PKR';
   const customer = await getMyCustomer();
-  if (!customer) return null;
+  // The layout already redirects anonymous visitors; this covers an expired
+  // session between the layout and page render, and never returns a blank page.
+  if (!customer) redirect('/login?next=/account');
 
   const [stats, orders, addresses] = await Promise.all([
     getMyStats(customer.id),

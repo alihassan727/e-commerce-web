@@ -18,11 +18,11 @@ export async function getOrderWithItems(
     .maybeSingle();
   if (!order) return null;
 
+  // order_items has no timestamp/sort column; keep the table's natural order.
   const { data: items } = await admin
     .from('order_items')
     .select('*')
-    .eq('order_id', id)
-    .order('created_at', { ascending: true });
+    .eq('order_id', id);
 
   return {
     ...(order as Order),

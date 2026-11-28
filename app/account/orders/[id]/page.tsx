@@ -1,4 +1,4 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import Link from 'next/link';
 import OrderStatusBadge from '@/components/order-status-badge';
 import TrackingTimeline from '@/components/tracking-timeline';
@@ -6,11 +6,14 @@ import { getMyCustomer, getMyOrderDetail } from '@/lib/queries/account';
 import { getSiteSettings } from '@/lib/queries/catalog';
 import { getCustomerReviewedProductIds } from '@/lib/queries/reviews';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { isUuid } from '@/lib/search';
 import { formatPrice } from '@/lib/format';
 
 export default async function AccountOrderDetailPage({ params }: { params: { id: string } }) {
+  // Avoid a Postgres uuid cast error for malformed URLs.
+  if (!isUuid(params.id)) notFound();
   const [customer, settings] = await Promise.all([getMyCustomer(), getSiteSettings()]);
-  if (!customer) return null;
+  if (!customer) redirect(`/login?next=/account/orders/${params.id}`);
   const currency = settings?.currency ?? 'PKR';
 
   const result = await getMyOrderDetail(params.id, customer.id, customer.email);

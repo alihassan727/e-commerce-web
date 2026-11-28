@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { createClient } from '@/lib/supabase/server';
+import { ensureCustomerForUser } from '@/lib/customer';
 import { getEffectivePrice } from '@/lib/pricing';
 import { getStorageUrl } from '@/lib/storage';
 
@@ -264,12 +265,13 @@ export async function createOrder(
   } = await supabase.auth.getUser();
   let customerId: string | null = null;
   if (user) {
-    const { data: cust } = await admin
-      .from('customers')
-      .select('id')
-      .eq('auth_uid', user.id)
-      .maybeSingle();
-    customerId = cust?.id ?? null;
+    try {
+      customerId = (await ensureCustomerForUser(user)).id;
+    } catch (err) {
+      // Never block an order on profile repair; account order lists also match
+      // unlinked orders by email.
+      console.error('[orders] customer lookup failed:', err);
+    }
   }
 
   const { data: order, error: orderErr } = await admin

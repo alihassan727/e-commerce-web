@@ -215,6 +215,108 @@ html.dark .divider {
   border-top-color: #33302b;
 }
 
+/* CMS page content (Tiptap HTML). The Tailwind typography plugin is not part of
+   this project, so these rules supply the readable defaults used by the public
+   CMS routes, the draft preview and the editor surface. */
+.cms-content {
+  font-size: 0.9375rem;
+  line-height: 1.75;
+  color: #1b1a18;
+}
+
+html.dark .cms-content {
+  color: #ede9e3;
+}
+
+.cms-content > * + * {
+  margin-top: 0.9rem;
+}
+
+.cms-content h1,
+.cms-content h2,
+.cms-content h3 {
+  font-family: var(--font-fraunces), Georgia, serif;
+  letter-spacing: -0.01em;
+  line-height: 1.3;
+  margin-top: 2rem;
+}
+
+.cms-content h1 { font-size: 1.75rem; }
+.cms-content h2 { font-size: 1.375rem; }
+.cms-content h3 { font-size: 1.125rem; }
+
+.cms-content p { margin: 0; }
+
+.cms-content ul,
+.cms-content ol {
+  padding-left: 1.35rem;
+  margin: 0;
+}
+
+.cms-content ul { list-style: disc; }
+.cms-content ol { list-style: decimal; }
+
+.cms-content li + li { margin-top: 0.35rem; }
+.cms-content li > p { margin: 0; }
+
+.cms-content a {
+  color: var(--accent, #a8472d);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cms-content strong { font-weight: 600; }
+
+.cms-content blockquote {
+  border-left: 2px solid #d9d2c7;
+  padding-left: 1rem;
+  color: #6b6660;
+  font-style: italic;
+}
+
+html.dark .cms-content blockquote {
+  border-left-color: #33302b;
+  color: #9a938a;
+}
+
+.cms-content hr {
+  border: 0;
+  border-top: 1px solid #e2dbd0;
+  margin: 1.75rem 0;
+}
+
+html.dark .cms-content hr { border-top-color: #33302b; }
+
+.cms-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 6px;
+}
+
+.cms-content code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.85em;
+  background-color: #ece6dc;
+  padding: 0.1rem 0.3rem;
+  border-radius: 4px;
+}
+
+html.dark .cms-content code { background-color: #24221f; }
+
+.cms-content pre {
+  background-color: #ece6dc;
+  padding: 1rem;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+
+html.dark .cms-content pre { background-color: #24221f; }
+
+.cms-content pre code {
+  background-color: transparent;
+  padding: 0;
+}
+
 /* Announcement bar */
 .announcement-bar {
   background-color: #1b1a18;

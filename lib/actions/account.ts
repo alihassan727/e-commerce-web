@@ -4,8 +4,10 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/admin';
+import { getCurrentCustomer } from '@/lib/customer';
+import { slugifyPage } from '@/lib/cms/defaults';
 import { isUuid } from '@/lib/search';
-import type { TicketCategory } from '@/lib/types';
+import type { Customer, TicketCategory } from '@/lib/types';
 
 const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
 const CMS_IMAGE_TYPES: Record<string, string> = {
@@ -25,20 +27,21 @@ const LOGO_IMAGE_TYPES: Record<string, string> = {
 // Helpers
 // ---------------------------------------------------------------------------
 
-async function getAuthUser() {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
-}
+type CustomerLookup = { customer: Customer } | { error: string };
 
-async function getCustomerId(userId: string): Promise<string | null> {
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('customers')
-    .select('id')
-    .eq('auth_uid', userId)
-    .maybeSingle();
-  return data?.id ?? null;
+/**
+ * Returns the signed-in customer, recreating the row if it is missing.
+ * Converts unexpected failures into an action error instead of a raw 500.
+ */
+async function requireCustomer(): Promise<CustomerLookup> {
+  try {
+    const customer = await getCurrentCustomer();
+    if (!customer) return { error: 'Not signed in.' };
+    return { customer };
+  } catch (err) {
+    console.error('[account] customer lookup failed:', err);
+    return { error: 'Could not load your account. Please try again.' };
+  }
 }
 
 export type ActionResult = { ok: true } | { ok: false; error: string };
@@ -67,10 +70,9 @@ export interface ProfileInput {
 }
 
 export async function updateProfile(input: ProfileInput): Promise<ActionResult> {
-  const user = await getAuthUser();
-  if (!user) return { ok: false, error: 'Not signed in.' };
-  const customerId = await getCustomerId(user.id);
-  if (!customerId) return { ok: false, error: 'Customer record not found.' };
+  const resolved = await requireCustomer();
+  if ('error' in resolved) return { ok: false, error: resolved.error };
+  const customer = resolved.customer;
 
   const admin = createAdminClient();
   const { error } = await admin
@@ -82,7 +84,7 @@ export async function updateProfile(input: ProfileInput): Promise<ActionResult> 
       city: input.city?.trim() || null,
       postal_code: input.postal_code?.trim() || null,
     })
-    .eq('id', customerId);
+    .eq('id', customer.id);
 
   if (error) return { ok: false, error: error.message };
   revalidatePath('/account');
@@ -106,10 +108,9 @@ export interface AddressInput {
 }
 
 export async function saveAddress(input: AddressInput): Promise<ActionResult> {
-  const user = await getAuthUser();
-  if (!user) return { ok: false, error: 'Not signed in.' };
-  const customerId = await getCustomerId(user.id);
-  if (!customerId) return { ok: false, error: 'Customer record not found.' };
+  const resolved = await requireCustomer();
+  if ('error' in resolved) return { ok: false, error: resolved.error };
+  const customer = resolved.customer;
 
   if (!input.full_name.trim() || !input.address.trim() || !input.city.trim()) {
     return { ok: false, error: 'Full name, address and city are required.' };
@@ -122,11 +123,11 @@ export async function saveAddress(input: AddressInput): Promise<ActionResult> {
     await admin
       .from('customer_addresses')
       .update({ is_default: false })
-      .eq('customer_id', customerId);
+      .eq('customer_id', customer.id);
   }
 
   const payload = {
-    customer_id: customerId,
+    customer_id: customer.id,
     label: input.label.trim() || 'Home',
     full_name: input.full_name.trim(),
     phone: input.phone?.trim() || null,
@@ -141,7 +142,7 @@ export async function saveAddress(input: AddressInput): Promise<ActionResult> {
       .from('customer_addresses')
       .update(payload)
       .eq('id', input.id)
-      .eq('customer_id', customerId);
+      .eq('customer_id', customer.id);
     if (error) return { ok: false, error: error.message };
   } else {
     const { error } = await admin
@@ -156,17 +157,16 @@ export async function saveAddress(input: AddressInput): Promise<ActionResult> {
 }
 
 export async function deleteAddress(id: string): Promise<ActionResult> {
-  const user = await getAuthUser();
-  if (!user) return { ok: false, error: 'Not signed in.' };
-  const customerId = await getCustomerId(user.id);
-  if (!customerId) return { ok: false, error: 'Customer record not found.' };
+  const resolved = await requireCustomer();
+  if ('error' in resolved) return { ok: false, error: resolved.error };
+  const customer = resolved.customer;
 
   const admin = createAdminClient();
   const { error } = await admin
     .from('customer_addresses')
     .delete()
     .eq('id', id)
-    .eq('customer_id', customerId);
+    .eq('customer_id', customer.id);
 
   if (error) return { ok: false, error: error.message };
   revalidatePath('/account/addresses');
@@ -175,21 +175,20 @@ export async function deleteAddress(id: string): Promise<ActionResult> {
 }
 
 export async function setDefaultAddress(id: string): Promise<ActionResult> {
-  const user = await getAuthUser();
-  if (!user) return { ok: false, error: 'Not signed in.' };
-  const customerId = await getCustomerId(user.id);
-  if (!customerId) return { ok: false, error: 'Customer record not found.' };
+  const resolved = await requireCustomer();
+  if ('error' in resolved) return { ok: false, error: resolved.error };
+  const customer = resolved.customer;
 
   const admin = createAdminClient();
   await admin
     .from('customer_addresses')
     .update({ is_default: false })
-    .eq('customer_id', customerId);
+    .eq('customer_id', customer.id);
   const { error } = await admin
     .from('customer_addresses')
     .update({ is_default: true })
     .eq('id', id)
-    .eq('customer_id', customerId);
+    .eq('customer_id', customer.id);
 
   if (error) return { ok: false, error: error.message };
   revalidatePath('/account/addresses');
@@ -227,20 +226,15 @@ async function generateTicketNumber(): Promise<string> {
 }
 
 export async function submitTicket(input: TicketInput): Promise<TicketResult> {
-  const user = await getAuthUser();
-  if (!user) return { ok: false, error: 'Not signed in.' };
+  const resolved = await requireCustomer();
+  if ('error' in resolved) return { ok: false, error: resolved.error };
+  const customer = resolved.customer;
 
   if (!input.subject.trim() || !input.description.trim()) {
     return { ok: false, error: 'Subject and description are required.' };
   }
 
   const admin = createAdminClient();
-  const { data: customer } = await admin
-    .from('customers')
-    .select('id,name,email')
-    .eq('auth_uid', user.id)
-    .maybeSingle();
-  if (!customer) return { ok: false, error: 'Customer record not found.' };
 
   // A related order may only be referenced when it belongs to this customer
   // (linked customer row, or a guest order placed with the same email).
@@ -284,7 +278,7 @@ export async function submitTicket(input: TicketInput): Promise<TicketResult> {
     .insert({
       ticket_number: ticketNumber,
       customer_id: customer.id,
-      customer_name: customer.name ?? user.email ?? '',
+      customer_name: customer.name ?? customer.email ?? '',
       email: customer.email,
       phone: input.phone?.trim() || null,
       subject: input.subject.trim(),
@@ -420,23 +414,165 @@ export async function adminAddTrackingEvent(
 // Admin: CMS actions
 // ---------------------------------------------------------------------------
 
-export async function adminSavePage(
-  slug: string,
-  title: string,
-  content: string,
-  is_published: boolean,
-): Promise<ActionResult> {
+export type PageSaveResult = { ok: true; slug: string } | { ok: false; error: string };
+
+/** Rejects a submission whose content is empty once HTML markup is removed. */
+function contentHasText(html: string | null | undefined): boolean {
+  return (html ?? '')
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;|&#160;/gi, ' ')
+    .replace(/&[a-z]+;/gi, ' ')
+    .trim().length > 0;
+}
+
+function normalisePageSlug(raw: string): string {
+  return slugifyPage(raw ?? '');
+}
+
+function revalidateCmsPage(slugs: string[]): void {
+  revalidatePath('/admin/cms/pages');
+  // The footer lists published pages, so the shared layout has to be refreshed.
+  revalidatePath('/', 'layout');
+  for (const slug of slugs) {
+    if (!slug) continue;
+    revalidatePath(`/pages/${slug}`);
+    revalidatePath(`/${slug}`);
+  }
+}
+
+/**
+ * Creates a CMS page. Slugs are unique across published and draft pages so a
+ * draft can never shadow a live URL.
+ */
+export async function adminCreatePage(input: {
+  title: string;
+  slug: string;
+  content: string;
+  isPublished: boolean;
+}): Promise<PageSaveResult> {
   await requireAdmin();
-  if (!title.trim()) return { ok: false, error: 'Title is required.' };
+
+  const title = input.title.trim();
+  if (!title) return { ok: false, error: 'Page title is required.' };
+
+  const slug = normalisePageSlug(input.slug || title);
+  if (!slug) {
+    return { ok: false, error: 'Enter a page URL using letters, numbers and hyphens.' };
+  }
+  const content = input.content ?? '';
+  if (input.isPublished && !contentHasText(content)) {
+    return { ok: false, error: 'Add some content before publishing this page.' };
+  }
 
   const admin = createAdminClient();
+  const { data: clash } = await admin
+    .from('cms_pages')
+    .select('id')
+    .eq('slug', slug)
+    .maybeSingle();
+  if (clash) return { ok: false, error: 'Another page already uses that URL.' };
+
+  const { error } = await admin.from('cms_pages').insert({
+    slug,
+    title,
+    content,
+    is_published: input.isPublished,
+  });
+  if (error) {
+    return {
+      ok: false,
+      error: error.code === '23505' ? 'Another page already uses that URL.' : error.message,
+    };
+  }
+
+  revalidateCmsPage([slug]);
+  return { ok: true, slug };
+}
+
+/**
+ * Saves an existing CMS page, including a slug change. Only the fields passed
+ * in are written, so nothing else about the record is touched.
+ */
+export async function adminUpdatePage(input: {
+  originalSlug: string;
+  title: string;
+  slug: string;
+  content: string;
+  isPublished: boolean;
+}): Promise<PageSaveResult> {
+  await requireAdmin();
+
+  const title = input.title.trim();
+  if (!title) return { ok: false, error: 'Page title is required.' };
+
+  const slug = normalisePageSlug(input.slug || title);
+  if (!slug) {
+    return { ok: false, error: 'Enter a page URL using letters, numbers and hyphens.' };
+  }
+  const content = input.content ?? '';
+  if (input.isPublished && !contentHasText(content)) {
+    return { ok: false, error: 'Add some content before publishing this page.' };
+  }
+
+  const admin = createAdminClient();
+  const { data: existing, error: findError } = await admin
+    .from('cms_pages')
+    .select('id,slug')
+    .eq('slug', input.originalSlug)
+    .maybeSingle();
+  if (findError) return { ok: false, error: findError.message };
+  if (!existing) return { ok: false, error: 'This page no longer exists.' };
+
+  if (slug !== existing.slug) {
+    const { data: clash } = await admin
+      .from('cms_pages')
+      .select('id')
+      .eq('slug', slug)
+      .maybeSingle();
+    if (clash) return { ok: false, error: 'Another page already uses that URL.' };
+  }
+
   const { error } = await admin
     .from('cms_pages')
-    .update({ title: title.trim(), content, is_published })
-    .eq('slug', slug);
+    .update({ title, slug, content, is_published: input.isPublished })
+    .eq('id', existing.id);
+  if (error) {
+    return {
+      ok: false,
+      error: error.code === '23505' ? 'Another page already uses that URL.' : error.message,
+    };
+  }
+
+  revalidateCmsPage([existing.slug, slug]);
+  return { ok: true, slug };
+}
+
+/** Publishes or unpublishes a page without touching its content. */
+export async function adminSetPagePublished(
+  slug: string,
+  isPublished: boolean,
+): Promise<ActionResult> {
+  await requireAdmin();
+
+  const admin = createAdminClient();
+  const { data: page, error } = await admin
+    .from('cms_pages')
+    .select('id,slug,content')
+    .eq('slug', slug)
+    .maybeSingle();
   if (error) return { ok: false, error: error.message };
-  revalidatePath('/admin/cms/pages');
-  revalidatePath(`/pages/${slug}`);
+  if (!page) return { ok: false, error: 'This page no longer exists.' };
+  if (isPublished && !contentHasText(page.content as string | null)) {
+    return { ok: false, error: 'Add some content before publishing this page.' };
+  }
+
+  const { error: updateError } = await admin
+    .from('cms_pages')
+    .update({ is_published: isPublished })
+    .eq('id', page.id);
+  if (updateError) return { ok: false, error: updateError.message };
+
+  revalidateCmsPage([slug]);
   return { ok: true };
 }
 

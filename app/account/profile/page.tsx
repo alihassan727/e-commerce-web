@@ -1,8 +1,10 @@
+import { redirect } from 'next/navigation';
 import { getMyCustomer } from '@/lib/queries/account';
 import { ProfileClientForm } from './client';
 
 export default async function ProfilePage() {
   const customer = await getMyCustomer();
+  if (!customer) redirect('/login?next=/account/profile');
   return (
     <ProfileClientForm
       initialData={{

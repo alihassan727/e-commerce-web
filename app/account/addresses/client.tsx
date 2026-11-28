@@ -17,7 +17,11 @@ export default function AddressBook({
   initialAddresses: CustomerAddress[];
 }) {
   const router = useRouter();
-  const [editing, setEditing] = useState<Partial<CustomerAddress> | null>(null);
+  // Show the form immediately when the address book is empty so a customer can
+  // add their first address without an extra step.
+  const [editing, setEditing] = useState<Partial<CustomerAddress> | null>(
+    initialAddresses.length === 0 ? empty() : null,
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -112,7 +116,7 @@ export default function AddressBook({
       )}
 
       {/* Address list */}
-      {initialAddresses.length === 0 && !editing ? (
+      {initialAddresses.length === 0 ? (
         <div className="border border-line dark:border-dark-line p-8 text-center">
           <p className="text-muted dark:text-dark-muted text-sm">No saved addresses yet.</p>
         </div>

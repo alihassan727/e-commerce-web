@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import OrderStatusBadge from '@/components/order-status-badge';
 import { getMyCustomer, getMyOrders } from '@/lib/queries/account';
 import { getSiteSettings } from '@/lib/queries/catalog';
@@ -7,7 +8,7 @@ import DeleteAccountButton from '@/components/delete-account-button';
 
 export default async function AccountOrdersPage() {
   const [customer, settings] = await Promise.all([getMyCustomer(), getSiteSettings()]);
-  if (!customer) return null;
+  if (!customer) redirect('/login?next=/account/orders');
   const currency = settings?.currency ?? 'PKR';
   const orders = await getMyOrders(customer.id, customer.email);
 

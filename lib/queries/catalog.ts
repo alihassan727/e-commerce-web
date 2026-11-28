@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { cache } from 'react';
+import { cmsSlugCandidates } from '@/lib/cms/defaults';
 import type {
   Category,
   CmsFeature,
@@ -180,16 +181,25 @@ export const getActiveFeatures = cache(async (): Promise<CmsFeature[]> => {
   return (data ?? []) as CmsFeature[];
 });
 
-export async function getPublishedPage(slug: string): Promise<CmsPage | null> {
-  const supabase = createClient();
-  const { data } = await supabase
-    .from('cms_pages')
-    .select('*')
-    .eq('slug', slug)
-    .eq('is_published', true)
-    .maybeSingle();
-  return data as CmsPage | null;
-}
+/**
+ * Public read of one CMS page. Drafts are excluded twice over: the anon client
+ * is subject to the "public read published pages" RLS policy and the query also
+ * filters on is_published. Legacy slugs (e.g. `returns`) resolve to the same
+ * page so old links keep working without duplicating records.
+ */
+export const getPublishedPage = cache(
+  async (slug: string): Promise<CmsPage | null> => {
+    const candidates = cmsSlugCandidates(slug);
+    const supabase = createClient();
+    const { data } = await supabase
+      .from('cms_pages')
+      .select('*')
+      .in('slug', candidates)
+      .eq('is_published', true);
+    const rows = (data ?? []) as CmsPage[];
+    return rows.find((r) => r.slug === candidates[0]) ?? rows[0] ?? null;
+  },
+);
 
 // Admin reads all pages regardless of publish state (via service-role).
 export async function adminGetAllPages(): Promise<CmsPage[]> {

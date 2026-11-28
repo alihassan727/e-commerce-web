@@ -4,7 +4,8 @@ import { revalidatePath } from 'next/cache';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { requireAdmin } from '@/lib/admin';
-import type { ReviewStatus } from '@/lib/types';
+import { ensureCustomerForUser } from '@/lib/customer';
+import type { Customer, ReviewStatus } from '@/lib/types';
 
 export type ReviewResult = { ok: true } | { ok: false; error: string };
 
@@ -23,13 +24,14 @@ export async function submitReview(input: {
 
   const admin = createAdminClient();
 
-  // Look up customer row.
-  const { data: customer } = await admin
-    .from('customers')
-    .select('id, email')
-    .eq('auth_uid', user.id)
-    .maybeSingle();
-  if (!customer) return { ok: false, error: 'Customer record not found.' };
+  // Recreate or re-link the customer row if database cleanup removed it.
+  let customer: Customer;
+  try {
+    customer = await ensureCustomerForUser(user);
+  } catch (err) {
+    console.error('[reviews] customer lookup failed:', err);
+    return { ok: false, error: 'Could not load your account. Please try again.' };
+  }
 
   // Server-side eligibility check: must have a delivered order with this product
   // (matched by customer_id or unlinked guest order email).
@@ -115,12 +117,13 @@ export async function editReview(input: {
   }
 
   const admin = createAdminClient();
-  const { data: customer } = await admin
-    .from('customers')
-    .select('id')
-    .eq('auth_uid', user.id)
-    .maybeSingle();
-  if (!customer) return { ok: false, error: 'Customer record not found.' };
+  let customer: Customer;
+  try {
+    customer = await ensureCustomerForUser(user);
+  } catch (err) {
+    console.error('[reviews] customer lookup failed:', err);
+    return { ok: false, error: 'Could not load your account. Please try again.' };
+  }
 
   // Only allow editing own review.
   const { data: review } = await admin

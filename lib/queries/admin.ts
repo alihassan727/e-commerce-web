@@ -97,6 +97,15 @@ export interface AdminProductRow extends Product {
   variant_count: number;
   color_count: number;
   images: { storage_path: string; sort_order: number }[];
+  /** Storage path of the image the storefront would show, or null. */
+  thumbnail_path: string | null;
+}
+
+/** First image of a colour gallery, ordered by sort_order. */
+function firstImagePath(
+  images: { storage_path: string; sort_order: number }[] | null | undefined,
+): string | null {
+  return [...(images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0]?.storage_path ?? null;
 }
 
 export async function adminListProducts(): Promise<AdminProductRow[]> {
@@ -104,21 +113,42 @@ export async function adminListProducts(): Promise<AdminProductRow[]> {
   const { data } = await admin
     .from('products')
     .select(
-      '*, category:categories(name), images:product_images(id,storage_path,sort_order,variant_id), variants:variants(id), colors:product_colors(id,name,color_hex,is_active)',
+      '*, category:categories(name), images:product_images(id,storage_path,sort_order,variant_id), variants:variants(id), colors:product_colors(id,name,color_hex,is_active,sort_order,images:color_images(storage_path,sort_order))',
     )
     .order('created_at', { ascending: false });
   return ((data ?? []) as unknown as (Product & {
     category: { name: string } | null;
     images: { id: string; storage_path: string; sort_order: number; variant_id: string | null }[];
     variants: { id: string }[];
-    colors: { id: string }[];
-  })[]).map((p) => ({
-    ...p,
-    category_name: p.category?.name ?? null,
-    image_count: p.images?.length ?? 0,
-    variant_count: p.variants?.length ?? 0,
-    color_count: p.colors?.length ?? 0,
-  }));
+    colors: {
+      id: string;
+      is_active: boolean;
+      sort_order: number;
+      images: { storage_path: string; sort_order: number }[];
+    }[];
+  })[]).map((p) => {
+    const colors = p.colors ?? [];
+    const activeColors = [...colors]
+      .filter((c) => c.is_active)
+      .sort((a, b) => a.sort_order - b.sort_order);
+
+    // Same precedence as the storefront cards: the first active colour gallery,
+    // then a product-level image, then any colour image.
+    const thumbnail_path =
+      activeColors.map((c) => firstImagePath(c.images)).find(Boolean) ??
+      firstImagePath(p.images) ??
+      colors.map((c) => firstImagePath(c.images)).find(Boolean) ??
+      null;
+
+    return {
+      ...p,
+      category_name: p.category?.name ?? null,
+      image_count: p.images?.length ?? 0,
+      variant_count: p.variants?.length ?? 0,
+      color_count: colors.length,
+      thumbnail_path,
+    };
+  });
 }
 
 export async function adminGetProduct(id: string): Promise<ProductDetail | null> {
@@ -186,11 +216,11 @@ export async function adminGetOrder(id: string): Promise<(Order & { items: Order
   const admin = createAdminClient();
   const { data: order } = await admin.from('orders').select('*').eq('id', id).maybeSingle();
   if (!order) return null;
+  // order_items has no timestamp/sort column; keep the table's natural order.
   const { data: items } = await admin
     .from('order_items')
     .select('*')
-    .eq('order_id', id)
-    .order('created_at', { ascending: true });
+    .eq('order_id', id);
   return { ...(order as Order), items: (items ?? []) as OrderItem[] };
 }
 

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import ProductImage from '@/components/product-image';
+import AdminProductDelete from '@/components/admin-product-delete';
 import { adminListProducts } from '@/lib/queries/admin';
 import { getSiteSettings } from '@/lib/queries/catalog';
 import { formatPrice } from '@/lib/format';
@@ -26,73 +27,66 @@ export default async function AdminProductsPage() {
           <Link href="/admin/products/new" className="btn btn-primary mt-4">Add your first product</Link>
         </div>
       ) : (
-        <div className="border border-line dark:border-dark-line">
-          {/* Header row — hidden on small screens */}
-          <div className="hidden md:grid grid-cols-[3rem_2fr_1fr_1fr_1fr_auto] gap-3 px-4 py-2 text-xs text-muted dark:text-dark-muted border-b border-line dark:border-dark-line">
-            <span></span>
-            <span>Product</span>
-            <span>Price</span>
-            <span>Stock</span>
-            <span>Status</span>
-            <span></span>
-          </div>
-
+        <div className="flex flex-col gap-3">
           {products.map((p) => {
-            const thumb =
-              [...(p.images ?? [])].sort((a, b) => a.sort_order - b.sort_order)[0]
-                ?.storage_path ?? null;
+            const stockLabel = p.has_variants
+              ? `${p.color_count} color${p.color_count === 1 ? '' : 's'} · ${p.variant_count} size${p.variant_count === 1 ? '' : 's'}`
+              : `${p.stock ?? 0} in stock`;
 
             return (
               <div
                 key={p.id}
-                className="grid grid-cols-[3rem_1fr] md:grid-cols-[3rem_2fr_1fr_1fr_1fr_auto] gap-3 px-4 py-3 border-b border-line dark:border-dark-line last:border-0 items-center"
+                className="border border-line dark:border-dark-line p-3 sm:p-4 flex gap-3 sm:gap-4"
               >
-                {/* Thumbnail */}
-                <div className="w-12 h-12 border border-line dark:border-dark-line shrink-0 overflow-hidden">
+                {/* Square thumbnail — uses the same image precedence as the storefront */}
+                <div className="w-16 h-16 sm:w-20 sm:h-20 shrink-0 overflow-hidden border border-line dark:border-dark-line bg-surface dark:bg-dark-surface">
                   <ProductImage
-                    path={thumb}
+                    path={p.thumbnail_path}
                     alt={p.title}
                     className="w-full h-full object-cover"
+                    sizes="80px"
                   />
                 </div>
 
-                {/* Name + category */}
-                <div className="min-w-0">
-                  <p className="font-medium text-sm text-ink dark:text-dark-ink truncate">{p.title}</p>
-                  <p className="text-xs text-muted dark:text-dark-muted">{p.category_name ?? 'No category'}</p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="font-medium text-sm text-ink dark:text-dark-ink break-words">
+                      {p.title}
+                    </p>
+                    <span
+                      className={`border px-1.5 py-0.5 text-[11px] ${
+                        p.is_active
+                          ? 'theme-border theme-text'
+                          : 'border-line dark:border-dark-line text-muted dark:text-dark-muted'
+                      }`}
+                    >
+                      {p.is_active ? 'Active' : 'Hidden'}
+                    </span>
+                    {p.is_featured && (
+                      <span className="border border-line dark:border-dark-line px-1.5 py-0.5 text-[11px] text-muted dark:text-dark-muted">
+                        Featured
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted dark:text-dark-muted">
+                    <span className="text-sm text-ink dark:text-dark-ink">
+                      {formatPrice(p.price, currency)}
+                    </span>
+                    <span>{p.category_name ?? 'No category'}</span>
+                    <span>{stockLabel}</span>
+                  </div>
                 </div>
 
-                {/* Price */}
-                <p className="hidden md:block text-sm text-ink dark:text-dark-ink">
-                  {formatPrice(p.price, currency)}
-                </p>
-
-                {/* Stock */}
-                <p className="hidden md:block text-sm text-muted dark:text-dark-muted">
-                  {p.has_variants
-                    ? `${p.color_count} color${p.color_count !== 1 ? 's' : ''} · ${p.variant_count} size${p.variant_count !== 1 ? 's' : ''}`
-                    : `${p.stock ?? 0} units`}
-                </p>
-
-                {/* Status */}
-                <p className="hidden md:block text-xs text-muted dark:text-dark-muted">
-                  <span className={`border px-1.5 py-0.5 ${p.is_active ? 'theme-border theme-text' : 'border-line dark:border-dark-line'}`}>
-                    {p.is_active ? 'Active' : 'Hidden'}
-                  </span>
-                  {p.is_featured && (
-                    <span className="ml-1 border border-line dark:border-dark-line px-1.5 py-0.5 text-muted dark:text-dark-muted">
-                      Featured
-                    </span>
-                  )}
-                </p>
-
-                {/* Actions */}
-                <Link
-                  href={`/admin/products/${p.id}`}
-                  className="text-sm theme-text whitespace-nowrap"
-                >
-                  Edit
-                </Link>
+                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-2 sm:gap-4 shrink-0 text-sm">
+                  <Link
+                    href={`/admin/products/${p.id}`}
+                    className="theme-text whitespace-nowrap"
+                  >
+                    Edit
+                  </Link>
+                  <AdminProductDelete id={p.id} title={p.title} />
+                </div>
               </div>
             );
           })}

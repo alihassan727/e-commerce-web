@@ -65,7 +65,7 @@ export default function RichTextEditor({
         {btn(() => editor.chain().focus().redo().run(), 'Redo')}
       </div>
       {/* Content area */}
-      <div className="p-3 min-h-[16rem] text-ink dark:text-dark-ink bg-canvas dark:bg-dark-canvas prose prose-sm max-w-none">
+      <div className="p-3 min-h-[16rem] text-ink dark:text-dark-ink bg-canvas dark:bg-dark-canvas cms-content max-w-none">
         <EditorContent editor={editor} />
       </div>
     </div>

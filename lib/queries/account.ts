@@ -1,5 +1,5 @@
-import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getCurrentCustomer } from '@/lib/customer';
 import { sanitizeSearchTerm } from '@/lib/search';
 import type {
   CmsFeature,
@@ -14,18 +14,22 @@ import type {
   TicketNote,
 } from '@/lib/types';
 
-/** Returns the customer row for the currently logged-in user, or null. */
+/**
+ * Returns the customer row for the currently logged-in user, or null when
+ * signed out. A missing row (e.g. after the customers table was cleared) is
+ * recreated lazily by getCurrentCustomer instead of returning null and
+ * blanking every account page.
+ */
 export async function getMyCustomer(): Promise<Customer | null> {
-  const supabase = createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return null;
-  const admin = createAdminClient();
-  const { data } = await admin
-    .from('customers')
-    .select('*')
-    .eq('auth_uid', user.id)
-    .maybeSingle();
-  return data as Customer | null;
+  return getCurrentCustomer();
+}
+
+/** Logs the real PostgREST error and throws so the account error boundary is shown. */
+function assertLoaded(context: string, error: { message: string } | null): void {
+  if (error) {
+    console.error(`[account] failed to load ${context}:`, error.message);
+    throw new Error(`Could not load ${context}. Please try again.`);
+  }
 }
 
 /** Returns basic stats for the customer dashboard. */
@@ -36,10 +40,11 @@ export async function getMyStats(customerId: string): Promise<{
   delivered_orders: number;
 }> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('orders')
     .select('status,total')
     .eq('customer_id', customerId);
+  assertLoaded('your order summary', error);
   const rows = (data ?? []) as { status: string; total: number }[];
   return {
     total_orders: rows.length,
@@ -54,12 +59,13 @@ export async function getMyStats(customerId: string): Promise<{
 /** Returns all saved addresses for the customer. */
 export async function getMyAddresses(customerId: string): Promise<CustomerAddress[]> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('customer_addresses')
     .select('*')
     .eq('customer_id', customerId)
     .order('is_default', { ascending: false })
     .order('created_at', { ascending: true });
+  assertLoaded('your saved addresses', error);
   return (data ?? []) as CustomerAddress[];
 }
 
@@ -76,13 +82,15 @@ export async function getMyOrders(customerId: string, customerEmail?: string | n
   } else {
     q = q.eq('customer_id', customerId);
   }
-  const { data: orders } = await q;
+  const { data: orders, error: ordersError } = await q;
+  assertLoaded('your orders', ordersError);
   if (!orders || orders.length === 0) return [];
   const ids = orders.map((o) => o.id);
-  const { data: items } = await admin
+  const { data: items, error: itemsError } = await admin
     .from('order_items')
     .select('*')
     .in('order_id', ids);
+  assertLoaded('your order items', itemsError);
   const itemsByOrder = new Map<string, OrderItem[]>();
   for (const item of (items ?? []) as OrderItem[]) {
     const arr = itemsByOrder.get(item.order_id) ?? [];
@@ -112,18 +120,22 @@ export async function getMyOrderDetail(
   } else {
     q = q.eq('customer_id', customerId);
   }
-  const { data: order } = await q.maybeSingle();
+  const { data: order, error: orderError } = await q.maybeSingle();
+  assertLoaded('this order', orderError);
   if (!order) return null;
-  const { data: items } = await admin
+  // order_items has no created_at / sort_order column, so there is no column
+  // to order by; rows are returned in the table's natural order.
+  const { data: items, error: itemsError } = await admin
     .from('order_items')
     .select('*')
-    .eq('order_id', orderId)
-    .order('created_at', { ascending: true });
-  const { data: tracking } = await admin
+    .eq('order_id', orderId);
+  assertLoaded('this order', itemsError);
+  const { data: tracking, error: trackingError } = await admin
     .from('order_tracking_events')
     .select('*')
     .eq('order_id', orderId)
     .order('created_at', { ascending: true });
+  assertLoaded('your delivery progress', trackingError);
   return {
     order: { ...(order as Order), items: (items ?? []) as OrderItem[] },
     tracking: (tracking ?? []) as OrderTrackingEvent[],
@@ -133,11 +145,12 @@ export async function getMyOrderDetail(
 /** Returns all support tickets for the customer. */
 export async function getMyTickets(customerId: string): Promise<SupportTicket[]> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('support_tickets')
     .select('*')
     .eq('customer_id', customerId)
     .order('created_at', { ascending: false });
+  assertLoaded('your support tickets', error);
   return (data ?? []) as SupportTicket[];
 }
 
@@ -147,12 +160,13 @@ export async function getMyTicket(
   customerId: string,
 ): Promise<SupportTicket | null> {
   const admin = createAdminClient();
-  const { data } = await admin
+  const { data, error } = await admin
     .from('support_tickets')
     .select('*')
     .eq('id', ticketId)
     .eq('customer_id', customerId)
     .maybeSingle();
+  assertLoaded('this ticket', error);
   return data as SupportTicket | null;
 }
 

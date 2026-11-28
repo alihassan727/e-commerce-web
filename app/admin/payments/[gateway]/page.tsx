@@ -18,15 +18,6 @@ const GATEWAY_META: Record<string, {
       { key: 'webhook_secret', label: 'Webhook Secret', type: 'secret' },
     ],
   },
-  payfast: {
-    label: 'PayFast',
-    description: 'Configure your PayFast merchant credentials.',
-    fields: [
-      { key: 'environment', label: 'Environment', type: 'select', options: ['sandbox', 'live'] },
-      { key: 'merchant_id', label: 'Merchant ID', type: 'text' },
-      { key: 'secured_key', label: 'Secured Key', type: 'secret' },
-    ],
-  },
 };
 
 export default async function GatewayPage({ params }: { params: { gateway: string } }) {

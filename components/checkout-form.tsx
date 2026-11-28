@@ -20,10 +20,13 @@ export default function CheckoutForm({
   settings,
   savedAddresses = [],
   customerProfile = null,
+  safepayAvailable = false,
 }: {
   settings: SiteSettings | null;
   savedAddresses?: CustomerAddress[];
   customerProfile?: CustomerProfile | null;
+  /** True when Safepay credentials are configured server-side. */
+  safepayAvailable?: boolean;
 }) {
   const { items, subtotal, clear } = useCart();
   const router = useRouter();
@@ -34,6 +37,9 @@ export default function CheckoutForm({
 
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // COD stays the default so the existing flow is unchanged unless the
+  // customer explicitly picks the online option.
+  const [paymentMethod, setPaymentMethod] = useState<'cod' | 'safepay'>('cod');
 
   // Address mode: 'saved' when the customer has saved addresses, 'new' otherwise
   const hasSavedAddresses = savedAddresses.length > 0;
@@ -113,6 +119,7 @@ export default function CheckoutForm({
         variant_id: i.variant_id,
         quantity: i.quantity,
       })),
+      payment_method: paymentMethod,
       customer: {
         name:                    deliveryName,
         email:                   deliveryEmail,
@@ -131,6 +138,11 @@ export default function CheckoutForm({
       return;
     }
     clear();
+    if ('redirectUrl' in result) {
+      // Safepay: the order and stock hold exist; pay on the hosted page.
+      window.location.assign(result.redirectUrl);
+      return;
+    }
     router.push(
       `/order/${result.orderId}?placed=1&email=${encodeURIComponent(result.email)}`,
     );
@@ -150,7 +162,9 @@ export default function CheckoutForm({
       <form onSubmit={onSubmit} className="flex flex-col gap-4">
         <h1 className="font-serif text-3xl mb-2">Checkout</h1>
         <p className="text-sm text-muted">
-          Cash on delivery. No payment needed now. We confirm stock and email you.
+          {paymentMethod === 'safepay'
+            ? 'You will be redirected to Safepay to pay securely. We confirm your order once the payment succeeds.'
+            : 'Cash on delivery. No payment needed now. We confirm stock and email you.'}
         </p>
 
         {error && <p className="text-sm theme-text">{error}</p>}
@@ -304,8 +318,50 @@ export default function CheckoutForm({
           </div>
         )}
 
+        <fieldset className="border border-line dark:border-dark-line p-4 flex flex-col gap-3">
+          <legend className="px-1 text-sm font-medium">Payment method</legend>
+          <label className="flex items-start gap-2 text-sm cursor-pointer">
+            <input
+              type="radio"
+              name="payment_method"
+              value="cod"
+              checked={paymentMethod === 'cod'}
+              onChange={() => setPaymentMethod('cod')}
+              className="mt-0.5"
+            />
+            <span>
+              Cash on delivery
+              <span className="block text-muted dark:text-dark-muted">
+                Pay when your order arrives.
+              </span>
+            </span>
+          </label>
+          {safepayAvailable && (
+            <label className="flex items-start gap-2 text-sm cursor-pointer">
+              <input
+                type="radio"
+                name="payment_method"
+                value="safepay"
+                checked={paymentMethod === 'safepay'}
+                onChange={() => setPaymentMethod('safepay')}
+                className="mt-0.5"
+              />
+              <span>
+                Card or wallet
+                <span className="block text-muted dark:text-dark-muted">
+                  Pay securely on Safepay.
+                </span>
+              </span>
+            </label>
+          )}
+        </fieldset>
+
         <button type="submit" className="btn btn-primary mt-2" disabled={submitting}>
-          {submitting ? 'Placing order' : 'Place order'}
+          {submitting
+            ? 'Placing order'
+            : paymentMethod === 'safepay'
+              ? 'Continue to payment'
+              : 'Place order'}
         </button>
       </form>
 

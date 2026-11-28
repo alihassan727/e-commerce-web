@@ -866,14 +866,12 @@ export async function saveButtonColor(color: string): Promise<DeleteResult> {
 
 const GATEWAY_FIELD_ALLOWLISTS: Record<string, string[]> = {
   safepay: ['environment', 'public_key', 'secret_key', 'webhook_secret'],
-  payfast: ['environment', 'merchant_id', 'secured_key'],
 };
 
 // Secret fields are never sent to the browser. A blank value means "keep the
 // saved secret", and the merge below happens entirely on the server.
 const GATEWAY_SECRET_FIELDS: Record<string, string[]> = {
   safepay: ['secret_key', 'webhook_secret'],
-  payfast: ['secured_key'],
 };
 
 export async function savePaymentGateway(

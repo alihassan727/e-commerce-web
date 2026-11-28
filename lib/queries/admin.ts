@@ -337,7 +337,7 @@ export async function adminGetSettings(): Promise<SiteSettings> {
 // ----- Payment gateway config (server-side only, never exposed to browser) -
 export interface PaymentGatewayRow {
   id: string;
-  gateway: 'safepay' | 'payfast';
+  gateway: 'safepay';
   is_active: boolean;
   updated_at: string;
   has_credentials: boolean;
@@ -349,10 +349,11 @@ export async function adminListPaymentGateways(): Promise<PaymentGatewayRow[]> {
   const { data } = await admin
     .from('payment_gateway_config')
     .select('id,gateway,is_active,updated_at,credentials')
+    .eq('gateway', 'safepay')
     .order('gateway', { ascending: true });
   const rows = ((data ?? []) as {
     id: string;
-    gateway: 'safepay' | 'payfast';
+    gateway: 'safepay';
     is_active: boolean;
     updated_at: string;
     credentials: Record<string, string> | null;
@@ -363,7 +364,7 @@ export async function adminListPaymentGateways(): Promise<PaymentGatewayRow[]> {
 
   // Show every supported gateway even when its seed row is missing, so the
   // configuration page is always reachable on a fresh database.
-  for (const gateway of ['payfast', 'safepay'] as const) {
+  for (const gateway of ['safepay'] as const) {
     if (!rows.some((row) => row.gateway === gateway)) {
       rows.push({
         id: '',
@@ -379,7 +380,7 @@ export async function adminListPaymentGateways(): Promise<PaymentGatewayRow[]> {
 
 export interface PaymentGatewayDetail {
   id: string;
-  gateway: 'safepay' | 'payfast';
+  gateway: 'safepay';
   is_active: boolean;
   updated_at: string;
   /** Non-secret values only (environment, public key, merchant id). */
@@ -390,12 +391,14 @@ export interface PaymentGatewayDetail {
 
 const GATEWAY_SECRET_KEYS: Record<string, string[]> = {
   safepay: ['secret_key', 'webhook_secret'],
-  payfast: ['secured_key'],
 };
 
 export async function adminGetPaymentGateway(
   gateway: string,
 ): Promise<PaymentGatewayDetail | null> {
+  // Safepay is the only online gateway exposed in the admin interface.
+  if (gateway !== 'safepay') return null;
+
   const admin = createAdminClient();
   const { data } = await admin
     .from('payment_gateway_config')
@@ -403,12 +406,10 @@ export async function adminGetPaymentGateway(
     .eq('gateway', gateway)
     .maybeSingle();
 
-  const known = gateway === 'safepay' || gateway === 'payfast';
   if (!data) {
-    if (!known) return null;
     return {
       id: '',
-      gateway: gateway as 'safepay' | 'payfast',
+      gateway: 'safepay',
       is_active: false,
       updated_at: new Date().toISOString(),
       values: {},
@@ -425,7 +426,7 @@ export async function adminGetPaymentGateway(
 
   return {
     id: data.id as string,
-    gateway: data.gateway as 'safepay' | 'payfast',
+    gateway: data.gateway as 'safepay',
     is_active: Boolean(data.is_active),
     updated_at: data.updated_at as string,
     values,

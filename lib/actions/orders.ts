@@ -1,7 +1,10 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { headers } from 'next/headers';
 import { createAdminClient } from '@/lib/supabase/admin';
+import { getSafepayConfig } from '@/lib/safepay/config';
+import { createSafepayCheckoutSession } from '@/lib/safepay/checkout';
 import { createClient } from '@/lib/supabase/server';
 import { ensureCustomerForUser } from '@/lib/customer';
 import { getEffectivePrice } from '@/lib/pricing';
@@ -13,6 +16,8 @@ export interface CreateOrderInput {
     variant_id: string | null;
     quantity: number;
   }[];
+  /** "cod" (default) keeps the existing COD flow; "safepay" is paid online. */
+  payment_method?: 'cod' | 'safepay';
   customer: {
     name: string;
     email: string;
@@ -26,7 +31,10 @@ export interface CreateOrderInput {
 }
 
 export type CreateOrderResult =
+  /** COD: the order is placed and the customer can be sent to its page. */
   | { ok: true; orderId: string; email: string }
+  /** Safepay: the order and stock hold exist; redirect to the hosted checkout. */
+  | { ok: true; orderId: string; redirectUrl: string }
   | { ok: false; error: string };
 
 interface VariantRow {
@@ -49,11 +57,17 @@ interface ColorRow {
 }
 
 /**
- * Creates a COD order (status pending) and fires the n8n stock-check webhook.
- * Prices and totals are recomputed from the database so the client cannot set
- * them. Stock is NOT deducted here: n8n checks stock and sets the order to
- * confirmed or out_of_stock. The webhook call is best-effort; the order stays
- * pending if n8n is unreachable.
+ * Creates an order (status pending).
+ *
+ * COD (default, unchanged): prices/totals are recomputed from the database,
+ * then the n8n stock-check webhook fires. Stock is NOT deducted here: n8n
+ * checks stock and sets the order to confirmed or out_of_stock. The webhook is
+ * best-effort; the order stays pending if n8n is unreachable.
+ *
+ * Safepay: the order is created with payment_method 'safepay' and
+ * payment_status 'unpaid', a stock hold is taken with reserve_order_stock, and
+ * a hosted checkout session is created. n8n is NOT called. Nothing is marked
+ * paid here — confirmation only happens after a verified webhook.
  */
 export async function createOrder(
   input: CreateOrderInput,
@@ -81,6 +95,8 @@ export async function createOrder(
   }
 
   const admin = createAdminClient();
+  const paymentMethod: 'cod' | 'safepay' =
+    input.payment_method === 'safepay' ? 'safepay' : 'cod';
 
   // Site settings: delivery fee, currency, delivery areas.
   const { data: settings } = await admin
@@ -290,6 +306,12 @@ export async function createOrder(
       subtotal,
       delivery_fee: deliveryFee,
       total,
+      // Online orders must declare a real payment state: the database rejects
+      // the COD default ('not_required') for non-COD rows. payment_gateway,
+      // payment_amount and paid_at stay NULL until a verified payment.
+      ...(paymentMethod === 'safepay'
+        ? { payment_method: 'safepay', payment_status: 'unpaid' }
+        : {}),
     })
     .select('id')
     .single();
@@ -318,6 +340,13 @@ export async function createOrder(
       line_total: it.line_total,
     })),
   );
+
+  if (paymentMethod === 'safepay') {
+    // The reservation RPC owns online stock holds; n8n must not run for these
+    // orders, so the COD webhook is skipped entirely.
+    revalidatePath(`/order/${orderId}`);
+    return startSafepayCheckout(orderId);
+  }
 
   // Best-effort webhook to n8n. The order remains pending if this fails.
   await triggerStockWebhook({
@@ -348,6 +377,130 @@ export async function createOrder(
 
   revalidatePath(`/order/${orderId}`);
   return { ok: true, orderId, email: c.email.trim().toLowerCase() };
+}
+
+/**
+ * Reserved stock TTL passed to reserve_order_stock (seconds). The RPC clamps
+ * this to 60..3600; 900 matches the intended 15-minute checkout window.
+ */
+const SAFEPAY_RESERVATION_TTL_SECONDS = 900;
+
+/**
+ * Takes the stock hold for an online order and creates the Safepay hosted
+ * checkout session. The charge amount is always the order total read back from
+ * the database, never a client value. On any failure after the hold the
+ * reservation is released, so stock cannot leak.
+ */
+async function startSafepayCheckout(
+  orderId: string,
+): Promise<CreateOrderResult> {
+  const admin = createAdminClient();
+
+  const { data: reservationData, error: reserveError } = await admin.rpc(
+    'reserve_order_stock',
+    { p_order_id: orderId, p_ttl_seconds: SAFEPAY_RESERVATION_TTL_SECONDS },
+  );
+
+  // RETURNS TABLE -> array; the RPC reports failures as a status row.
+  const reservation = (reservationData as
+    | { reservation_id: string | null; status: string; message: string }[]
+    | null)?.[0];
+
+  const reserved =
+    !reserveError &&
+    (reservation?.status === 'reserved' || reservation?.status === 'active');
+
+  if (!reserved) {
+    if (reserveError) {
+      console.error('[safepay] stock reservation failed:', reserveError.message);
+    }
+    return {
+      ok: false,
+      error:
+        'Sorry, one of the items in your order is not available in the requested quantity. Please adjust your cart or choose cash on delivery.',
+    };
+  }
+
+  const { data: orderRow } = await admin
+    .from('orders')
+    .select('total')
+    .eq('id', orderId)
+    .maybeSingle();
+  const total = Number(orderRow?.total ?? NaN);
+
+  if (!Number.isFinite(total) || total <= 0) {
+    console.error('[safepay] order total unavailable for', orderId);
+    await releaseSafepayReservation(orderId, 'invalid_total');
+    return {
+      ok: false,
+      error: 'We could not start the card payment. Please try again.',
+    };
+  }
+
+  const config = await getSafepayConfig();
+  if (!config) {
+    await releaseSafepayReservation(orderId, 'gateway_not_configured');
+    return {
+      ok: false,
+      error:
+        'Card payment is not available right now. Please choose cash on delivery.',
+    };
+  }
+
+  const origin = siteOrigin();
+
+  try {
+    const checkoutUrl = await createSafepayCheckoutSession(config, {
+      // Safepay expects the lowest denomination: PKR paisa.
+      amount: Math.round(total * 100),
+      orderId,
+      redirectUrl: `${origin}/order/${orderId}?payment=return`,
+      cancelUrl: `${origin}/order/${orderId}?payment=cancelled`,
+    });
+    return { ok: true, orderId, redirectUrl: checkoutUrl };
+  } catch (err) {
+    // Never log credentials; only the provider's error text.
+    console.error(
+      '[safepay] checkout session failed:',
+      err instanceof Error ? err.message : 'unknown error',
+    );
+    await releaseSafepayReservation(orderId, 'session_failed');
+    return {
+      ok: false,
+      error:
+        'We could not start the card payment. Please try again or choose cash on delivery.',
+    };
+  }
+}
+
+/** Releases an online stock hold. Safe to call more than once. */
+async function releaseSafepayReservation(orderId: string, reason: string) {
+  try {
+    const admin = createAdminClient();
+    await admin.rpc('release_order_reservation', {
+      p_order_id: orderId,
+      p_reason: reason,
+    });
+  } catch (err) {
+    console.error(
+      '[safepay] reservation release failed:',
+      err instanceof Error ? err.message : 'unknown error',
+    );
+  }
+}
+
+/** Public origin of the storefront, used for the Safepay return/cancel URLs. */
+function siteOrigin(): string {
+  const h = headers();
+  const host = h.get('x-forwarded-host') ?? h.get('host');
+  if (host) {
+    const forwardedProto = h.get('x-forwarded-proto');
+    const proto =
+      forwardedProto ??
+      (host.startsWith('localhost') || host.startsWith('127.0.0.1') ? 'http' : 'https');
+    return `${proto}://${host}`;
+  }
+  return process.env.NEXT_PUBLIC_SITE_URL ?? 'http://localhost:3000';
 }
 
 async function triggerStockWebhook(payload: unknown) {

@@ -133,7 +133,7 @@ export interface SiteSettings {
 
 export interface PaymentGatewayConfig {
   id: string;
-  gateway: 'safepay' | 'payfast';
+  gateway: 'safepay';
   is_active: boolean;
   credentials: Record<string, string>;
   updated_at: string;
@@ -162,6 +162,19 @@ export interface OrderItem {
   line_total: number;
 }
 
+export type OrderPaymentMethod = 'cod' | 'safepay' | 'payfast';
+
+export type OrderPaymentStatus =
+  | 'not_required'
+  | 'unpaid'
+  | 'pending'
+  | 'paid'
+  | 'failed'
+  | 'cancelled'
+  | 'expired'
+  | 'refunded'
+  | 'partially_refunded';
+
 export interface Order {
   id: string;
   customer_id: string | null;
@@ -178,6 +191,13 @@ export interface Order {
   delivery_fee: number;
   total: number;
   notes: string | null;
+  // Payment state (proposal 0012). Independent of the fulfilment status.
+  payment_method: OrderPaymentMethod;
+  payment_status: OrderPaymentStatus;
+  payment_gateway: string | null;
+  payment_amount: number | null;
+  payment_currency: string;
+  paid_at: string | null;
   created_at: string;
   updated_at: string;
 }

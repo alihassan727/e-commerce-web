@@ -10,10 +10,6 @@ const GATEWAY_META: Record<string, { label: string; description: string }> = {
     label: 'Safepay',
     description: 'Pakistani payment gateway supporting cards and wallets. Not connected.',
   },
-  payfast: {
-    label: 'PayFast',
-    description: 'South African payment gateway. Not connected.',
-  },
 };
 
 export default async function AdminPaymentsPage() {
